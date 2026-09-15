@@ -8,6 +8,8 @@ class TransactionRequest(BaseModel):
     location: str = Field(..., min_length=1, description="Transaction location")
     device: str = Field(..., min_length=1, description="Device identifier or type")
     payment_method: str = Field(..., min_length=1, description="Payment method (e.g. CARD, UPI)")
+    customer_id: Optional[str] = Field("CUST-1001", description="Customer profile ID")
+    channel: Optional[str] = Field("UPI", description="Transaction channel (UPI, CREDIT_CARD, DEBIT_CARD)")
 
 
 class TransactionResponse(BaseModel):
@@ -18,12 +20,15 @@ class TransactionResponse(BaseModel):
     location: str
     device: str
     payment_method: str
+    customer_id: Optional[str] = "CUST-1001"
+    channel: Optional[str] = "UPI"
     fraud_probability: float
     anomaly_score: float
     risk_score: float
     risk_level: str
     is_suspicious: bool
     prediction: str
+    decision: Optional[str] = "APPROVE"  # APPROVE, REVIEW, BLOCK
     explanation: List[str]
 
 

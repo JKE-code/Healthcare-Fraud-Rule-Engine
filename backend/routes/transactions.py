@@ -28,13 +28,19 @@ def generate_transaction_id() -> str:
     return f"TX-{uuid.uuid4().hex[:8].upper()}"
 
 
+from backend.customer_profiles import evaluate_customer_behaviour
+
 def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
     tx_id = generate_transaction_id()
     now_iso = datetime.now(timezone.utc).isoformat()
+    cust_id = request_data.get("customer_id", "CUST-1001")
+    channel = request_data.get("channel", "UPI")
 
     tx_payload = {
         "transaction_id": tx_id,
         "timestamp": now_iso,
+        "customer_id": cust_id,
+        "channel": channel,
         "amount": request_data["amount"],
         "merchant": request_data["merchant"],
         "location": request_data["location"],
@@ -42,25 +48,68 @@ def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
         "payment_method": request_data["payment_method"],
     }
 
+    # Evaluate customer behavioural baseline deviation
+    behaviour_eval = evaluate_customer_behaviour(tx_payload)
+
     # Call ML predictor interface (either real or mock)
     ml_result = predict_transaction(tx_payload)
+
+    fraud_prob = float(ml_result.get("fraud_probability", 0.0))
+    anomaly = float(ml_result.get("anomaly_score", 0.0))
+    base_risk = float(ml_result.get("risk_score", 0.0))
+
+    # Integrate behavioural deviation into composite risk
+    dev_score = behaviour_eval["deviation_score"]
+    if dev_score > 0:
+        # Boost risk when customer deviates strongly from historical baseline
+        composite_risk = min(1.0, (base_risk * 0.70) + (dev_score * 0.30))
+        anomaly = max(anomaly, dev_score)
+    else:
+        # If transaction matches customer's normal baseline (e.g. Priya normal high volume), reduce false positives
+        composite_risk = base_risk * 0.40
+
+    composite_risk = round(composite_risk, 3)
+
+    # Determine risk level
+    if composite_risk >= 0.80:
+        risk_level = "CRITICAL"
+        decision = "BLOCK"
+    elif composite_risk >= 0.60:
+        risk_level = "HIGH"
+        decision = "BLOCK" if composite_risk >= 0.70 else "REVIEW"
+    elif composite_risk >= 0.30:
+        risk_level = "MEDIUM"
+        decision = "REVIEW"
+    else:
+        risk_level = "LOW"
+        decision = "APPROVE"
+
+    prediction = "FRAUD" if decision == "BLOCK" else "LEGITIMATE"
+    is_suspicious = decision in ("BLOCK", "REVIEW")
+
+    # Merge explanations from ML and customer behaviour
+    ml_explanations = list(ml_result.get("explanation", []))
+    combined_explanations = list(dict.fromkeys(ml_explanations + behaviour_eval["explanations"]))
 
     # Combine transaction data + ML results (contract frozen in spec)
     combined: Dict[str, Any] = {
         "transaction_id": tx_id,
         "timestamp": now_iso,
+        "customer_id": cust_id,
+        "channel": channel,
         "amount": request_data["amount"],
         "merchant": request_data["merchant"],
         "location": request_data["location"],
         "device": request_data["device"],
         "payment_method": request_data["payment_method"],
-        "fraud_probability": ml_result.get("fraud_probability", 0.0),
-        "anomaly_score": ml_result.get("anomaly_score", 0.0),
-        "risk_score": ml_result.get("risk_score", 0.0),
-        "risk_level": ml_result.get("risk_level", "LOW"),
-        "is_suspicious": ml_result.get("is_suspicious", False),
-        "prediction": ml_result.get("prediction", "LEGITIMATE"),
-        "explanation": ml_result.get("explanation", []),
+        "fraud_probability": round(fraud_prob, 3),
+        "anomaly_score": round(anomaly, 3),
+        "risk_score": composite_risk,
+        "risk_level": risk_level,
+        "is_suspicious": is_suspicious,
+        "prediction": prediction,
+        "decision": decision,
+        "explanation": combined_explanations,
     }
 
     # In-memory storage
