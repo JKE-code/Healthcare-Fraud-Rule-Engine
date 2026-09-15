@@ -57,3 +57,10 @@ frontend/.env.*.local
 
 # Kaggle cache
 .cache/
+
+# Gradle build and cache
+.gradle/
+test_apk/.gradle/
+test_apk/local.properties
+test_apk/.idea/
+
