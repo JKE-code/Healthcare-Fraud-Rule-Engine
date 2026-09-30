@@ -127,3 +127,20 @@ export async function toggleSimulator() {
   if (!res.ok) throw new Error("Failed to toggle simulator stream");
   return res.json();
 }
+
+export async function fetchSimulatorStatus() {
+  const res = await fetch(`${API_URL}/api/simulator/status`);
+  if (!res.ok) throw new Error("Failed to fetch simulator status");
+  return res.json();
+}
+
+export async function setSimulatorMode(mode) {
+  const res = await fetch(`${API_URL}/api/simulator/mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error("Failed to set simulator mode");
+  return res.json();
+}
+

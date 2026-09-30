@@ -7,8 +7,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from backend.db.session import init_db, SessionLocal
 from backend.models import TransactionRequest
@@ -22,11 +23,13 @@ from backend.rules import engine
 from backend.services.aws_notifier import notifier
 from backend.websocket import manager
 from backend.mock_data import get_random_sample_transaction, get_clean_seed_transactions
+from backend.kaggle_streamer import get_next_kaggle_transaction, get_kaggle_dataset_info
 
 logger = logging.getLogger(__name__)
 
 # Live background stream: Active by default so new incoming transactions stream in real-time
 is_live_stream_active = True
+live_stream_mode = "synthetic"  # "synthetic" or "kaggle"
 
 
 async def dummy_transaction_worker():
@@ -35,14 +38,21 @@ async def dummy_transaction_worker():
     while True:
         try:
             if is_live_stream_active:
-                sample_data = get_random_sample_transaction()
+                if live_stream_mode == "kaggle":
+                    sample_data = get_next_kaggle_transaction()
+                    if not sample_data:
+                        sample_data = get_random_sample_transaction()
+                else:
+                    sample_data = get_random_sample_transaction()
+
                 req = TransactionRequest(**sample_data)
                 db = SessionLocal()
                 try:
                     res = await create_transaction(req, db)
                     tx_id = res.get("transaction_id", "") if isinstance(res, dict) else getattr(res, "transaction_id", "")
                     risk = res.get("risk_level", "LOW") if isinstance(res, dict) else getattr(res, "risk_level", "LOW")
-                    logger.info(f"⚡ Emitted {tx_id}: {req.merchant} (₹{req.amount:,.0f}) for {req.customer_id} -> {risk}")
+                    source_label = "KAGGLE" if live_stream_mode == "kaggle" else "SYNTHETIC"
+                    logger.info(f"⚡ [{source_label}] Emitted {tx_id}: {req.merchant} (₹{req.amount:,.0f}) for {req.customer_id} -> {risk}")
                 finally:
                     db.close()
         except Exception as e:
@@ -131,6 +141,7 @@ app.include_router(alerts_router)
 
 @app.get("/api/health", tags=["health"])
 async def health_check():
+    from ml_engine.predictor import get_model_status, get_active_model_name
     return {
         "status": "ok",
         "service": "acentra-fraud-rule-engine",
@@ -138,6 +149,9 @@ async def health_check():
         "rules": [r["rule_code"] for r in engine.get_rules()],
         "aws_notifier_mode": "live" if notifier.has_credentials else "sandbox_mock",
         "live_stream_active": is_live_stream_active,
+        "live_stream_mode": live_stream_mode,
+        "model_status": get_model_status(),
+        "model_name": get_active_model_name(),
     }
 
 
@@ -151,7 +165,38 @@ async def toggle_simulator():
 
 @app.get("/api/simulator/status", tags=["simulator"])
 async def get_simulator_status():
-    return {"live_stream_active": is_live_stream_active}
+    return {
+        "live_stream_active": is_live_stream_active,
+        "mode": live_stream_mode,
+        "kaggle_info": get_kaggle_dataset_info(),
+    }
+
+
+class StreamModePayload(BaseModel):
+    mode: str = "synthetic"  # "synthetic" or "kaggle"
+
+
+@app.post("/api/simulator/mode", tags=["simulator"])
+async def set_simulator_mode(payload: StreamModePayload):
+    """
+    Live Stream Mode Switcher:
+    Toggles background transaction ingestion between:
+    - 'synthetic': Procedural customer persona baseline stream
+    - 'kaggle': Authentic credit card fraud dataset stream (kartik2112/fraud-detection)
+    """
+    global live_stream_mode
+    target_mode = payload.mode.lower().strip()
+    if target_mode not in ("synthetic", "kaggle"):
+        raise HTTPException(status_code=400, detail="Mode must be either 'synthetic' or 'kaggle'")
+
+    live_stream_mode = target_mode
+    logger.info(f"Switched live transaction stream mode to: {live_stream_mode.upper()}")
+    return {
+        "status": "ok",
+        "mode": live_stream_mode,
+        "live_stream_active": is_live_stream_active,
+        "message": f"Successfully switched stream mode to {live_stream_mode.upper()}",
+    }
 
 
 @app.post("/api/simulator/reset", tags=["simulator"])
