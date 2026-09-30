@@ -28,30 +28,46 @@ _anomaly_model = None
 _scaler = None
 _metadata = None
 _demo_mode = False
+_active_model_name = "Mock"
 
 try:
     import joblib
 
+    lgbm_path = os.path.join(_MODELS_DIR, "fraud_model_lgbm.pkl")
     fraud_path = os.path.join(_MODELS_DIR, "fraud_model.pkl")
     anomaly_path = os.path.join(_MODELS_DIR, "anomaly_model.pkl")
     scaler_path = os.path.join(_MODELS_DIR, "scaler.pkl")
     meta_path = os.path.join(_MODELS_DIR, "metadata.pkl")
 
-    if os.path.exists(fraud_path) and os.path.exists(anomaly_path):
+    # Adaptive Dual-Engine Selection: Try LightGBM first, fallback gracefully to RandomForest
+    if os.path.exists(lgbm_path):
+        try:
+            import lightgbm  # verify runtime support
+            _fraud_model = joblib.load(lgbm_path)
+            _active_model_name = "LightGBM"
+            logger.info("Loaded primary high-performance LightGBM model.")
+        except Exception as e:
+            logger.warning(f"LightGBM runtime unavailable, falling back to RandomForest: {e}")
+
+    if _fraud_model is None and os.path.exists(fraud_path):
         _fraud_model = joblib.load(fraud_path)
-        _anomaly_model = joblib.load(anomaly_path)
         _fraud_model.n_jobs = 1
+        _active_model_name = "RandomForest"
+        logger.info("Loaded RandomForestClassifier baseline model.")
+
+    if os.path.exists(anomaly_path):
+        _anomaly_model = joblib.load(anomaly_path)
         _anomaly_model.n_jobs = 1
-        logger.info("ML models loaded successfully.")
+
+    if _fraud_model and _anomaly_model:
+        logger.info(f"ML models active. Primary classifier: {_active_model_name}")
         if os.path.exists(scaler_path):
             _scaler = joblib.load(scaler_path)
         if os.path.exists(meta_path):
             _metadata = joblib.load(meta_path)
     else:
         _demo_mode = True
-        logger.warning(
-            "Model files not found. Running in MOCK (fallback) mode."
-        )
+        logger.warning("Model files not found. Running in MOCK (fallback) mode.")
 except Exception as e:
     _demo_mode = True
     logger.warning(f"Failed to load models: {e}. Running in MOCK mode.")
@@ -71,6 +87,11 @@ def is_demo_mode() -> bool:
 def get_model_status() -> str:
     """Return 'live' or 'mock' — for API responses and frontend display."""
     return "mock" if _demo_mode else "live"
+
+
+def get_active_model_name() -> str:
+    """Return 'LightGBM', 'RandomForest', or 'Mock'."""
+    return _active_model_name
 
 
 def get_latency_benchmark() -> dict:

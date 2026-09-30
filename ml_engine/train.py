@@ -136,6 +136,30 @@ def train_fraud_classifier(X_train, y_train):
     return model
 
 
+def train_lgbm_classifier(X_train, y_train):
+    """Train LightGBM Classifier for sub-millisecond inference."""
+    print("[3b/7] Training LightGBM Classifier...")
+    try:
+        import lightgbm as lgb
+        t0 = time.time()
+        model = lgb.LGBMClassifier(
+            n_estimators=60,
+            max_depth=6,
+            learning_rate=0.08,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1,
+            verbose=-1,
+        )
+        model.fit(X_train, y_train)
+        elapsed = time.time() - t0
+        print(f"  LightGBM trained in {elapsed:.1f}s")
+        return model
+    except Exception as e:
+        print(f"  LightGBM training skipped: {e}")
+        return None
+
+
 def train_anomaly_detector(X_train, y_train):
     """Train IsolationForest on legitimate transactions only."""
     print("[4/7] Training IsolationForest (on legitimate data)...")
@@ -264,13 +288,16 @@ def run_latency_benchmark(fraud_model, anomaly_model, scaler):
     }
 
 
-def save_models(fraud_model, anomaly_model, scaler, metrics, latency_stats):
+def save_models(fraud_model, anomaly_model, scaler, metrics, latency_stats, lgbm_model=None):
     """Serialize models and metadata."""
     print("[7/7] Saving models...")
 
     joblib.dump(fraud_model, os.path.join(_MODELS_DIR, "fraud_model.pkl"))
     joblib.dump(anomaly_model, os.path.join(_MODELS_DIR, "anomaly_model.pkl"))
     joblib.dump(scaler, os.path.join(_MODELS_DIR, "scaler.pkl"))
+    if lgbm_model is not None:
+        joblib.dump(lgbm_model, os.path.join(_MODELS_DIR, "fraud_model_lgbm.pkl"))
+        print("  Saved LightGBM model: fraud_model_lgbm.pkl")
 
     metadata = {
         "features": FEATURE_COLS,
@@ -351,10 +378,11 @@ def main():
     )
     X_train, X_test, y_train, y_test, scaler = preprocess(df)
     fraud_model = train_fraud_classifier(X_train, y_train)
+    lgbm_model = train_lgbm_classifier(X_train, y_train)
     anomaly_model = train_anomaly_detector(X_train, y_train)
     metrics = evaluate(fraud_model, anomaly_model, X_test, y_test)
     latency_stats = run_latency_benchmark(fraud_model, anomaly_model, scaler)
-    save_models(fraud_model, anomaly_model, scaler, metrics, latency_stats)
+    save_models(fraud_model, anomaly_model, scaler, metrics, latency_stats, lgbm_model=lgbm_model)
 
     elapsed = time.time() - t_start
     print(f"\nTotal training time: {elapsed:.1f}s")
