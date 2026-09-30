@@ -57,9 +57,14 @@ export function Payment({ onTransactionCreated, onNavigate }) {
     fraudLikelihood: 94.5,
     threatCategory: 'CRITICAL Threat Category',
     modelId: 'Ensemble ML (RF + IsoForest)',
-    latency: '18.2ms',
+    latency: '—',
+    serverLatency: null,
     refId: 'TX-INITIAL',
     timestamp: 'JUST NOW',
+    modelStatus: null,
+    shapValues: {},
+    shapAvailable: false,
+    agentAction: null,
     riskFactors: [
       {
         title: 'High Amount Outlier',
@@ -125,7 +130,7 @@ export function Payment({ onTransactionCreated, onNavigate }) {
         body: JSON.stringify(payload)
       });
       
-      const latencyMs = (performance.now() - startTime).toFixed(1);
+      const roundTripMs = (performance.now() - startTime).toFixed(1);
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -133,13 +138,16 @@ export function Payment({ onTransactionCreated, onNavigate }) {
       // Convert backend ML explanation list to riskFactors format
       const explanations = (data.explanation && data.explanation.length > 0)
         ? data.explanation.map((item, idx) => ({
-            title: `Factor #${idx + 1}`,
+            title: data.shap_available ? `SHAP Factor #${idx + 1}` : `Factor #${idx + 1}`,
             detail: item
           }))
         : [];
 
       const isBlocked = data.risk_level === 'CRITICAL' || data.risk_level === 'HIGH';
       const fraudPct = ((data.fraud_probability || 0) * 100).toFixed(1);
+      // Use server-side inference latency if available, else round-trip
+      const serverLat = data.inference_latency_ms;
+      const displayLatency = serverLat != null ? `${serverLat}ms` : `${roundTripMs}ms (round-trip)`;
 
       setVerdict({
         status: isBlocked ? 'BLOCKED' : 'APPROVED',
@@ -147,9 +155,14 @@ export function Payment({ onTransactionCreated, onNavigate }) {
         fraudLikelihood: fraudPct,
         threatCategory: `${data.risk_level} Risk Category`,
         modelId: 'Ensemble ML (RF + IsoForest)',
-        latency: `${latencyMs}ms`,
+        latency: displayLatency,
+        serverLatency: serverLat,
         refId: data.transaction_id,
         timestamp: 'JUST NOW',
+        modelStatus: data.model_status || 'mock',
+        shapValues: data.shap_values || {},
+        shapAvailable: data.shap_available || false,
+        agentAction: data.agent_action || null,
         riskFactors: explanations
       });
 
@@ -165,9 +178,14 @@ export function Payment({ onTransactionCreated, onNavigate }) {
         fraudLikelihood: ((mockResult.fraud_probability || 0) * 100).toFixed(1),
         threatCategory: `${mockResult.risk_level} Risk Category`,
         modelId: 'ML Risk Engine (Offline)',
-        latency: '15.4ms',
+        latency: '— (offline)',
+        serverLatency: null,
         refId: mockResult.transaction_id,
         timestamp: 'JUST NOW',
+        modelStatus: 'offline',
+        shapValues: {},
+        shapAvailable: false,
+        agentAction: null,
         riskFactors: (mockResult.explanation || []).map((exp, i) => ({
           title: `Triggered Signal #${i + 1}`,
           detail: exp
@@ -443,12 +461,25 @@ export function Payment({ onTransactionCreated, onNavigate }) {
               fontSize: '11px',
               padding: '3px 8px',
               borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#10b981',
+              background: verdict.modelStatus === 'live' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              color: verdict.modelStatus === 'live' ? '#10b981' : '#f59e0b',
               fontWeight: 600
             }}>
-              LIVE MODEL PREDICTION
+              {verdict.modelStatus === 'live' ? '⚡ LIVE ML' : verdict.modelStatus === 'mock' ? '⚠️ MOCK MODE' : '⚠️ OFFLINE'}
             </span>
+            {verdict.shapAvailable && (
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: '8px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: '#818cf8',
+                fontWeight: 600,
+                marginLeft: '4px'
+              }}>
+                SHAP
+              </span>
+            )}
           </div>
 
           {/* Verdict Banner */}
@@ -638,9 +669,11 @@ export function Payment({ onTransactionCreated, onNavigate }) {
             </div>
           </div>
 
-          {/* TRIGGERED RISK FACTORS */}
+          {/* SHAP FEATURE ATTRIBUTION */}
           <div className="risk-factors-container">
-            <span className="section-micro-heading">EXPLAINABLE AI FACTORS</span>
+            <span className="section-micro-heading">
+              {verdict.shapAvailable ? 'SHAP FEATURE ATTRIBUTION' : 'RISK FACTORS'}
+            </span>
 
             {verdict.riskFactors.length === 0 ? (
               <div className="factor-clean-card">
@@ -672,6 +705,85 @@ export function Payment({ onTransactionCreated, onNavigate }) {
               </div>
             )}
           </div>
+
+          {/* SHAP Value Bars (when available) */}
+          {verdict.shapAvailable && Object.keys(verdict.shapValues).length > 0 && (
+            <div style={{
+              margin: '10px 0',
+              padding: '12px',
+              borderRadius: '8px',
+              background: 'rgba(15, 23, 42, 0.7)',
+              border: '1px solid rgba(99, 102, 241, 0.3)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em', color: '#818cf8' }}>
+                  SHAP FEATURE CONTRIBUTIONS
+                </span>
+              </div>
+              {Object.entries(verdict.shapValues)
+                .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                .map(([feature, value]) => (
+                  <div key={feature} style={{ marginBottom: '5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#94a3b8', marginBottom: '2px' }}>
+                      <span>{feature.replace(/_/g, ' ')}</span>
+                      <span style={{ fontFamily: 'monospace', color: value > 0 ? '#ef4444' : '#10b981' }}>
+                        {value > 0 ? '+' : ''}{value.toFixed(4)}
+                      </span>
+                    </div>
+                    <div style={{ height: '4px', background: '#1e293b', borderRadius: '2px', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{
+                        position: 'absolute',
+                        left: value > 0 ? '50%' : `${50 - Math.min(50, Math.abs(value) * 200)}%`,
+                        width: `${Math.min(50, Math.abs(value) * 200)}%`,
+                        height: '100%',
+                        background: value > 0 ? '#ef4444' : '#10b981',
+                        borderRadius: '2px',
+                        transition: 'all 0.3s ease'
+                      }} />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+
+          {/* Agentic Message (CHALLENGE OTP or BLOCK Case Note) */}
+          {verdict.agentAction && verdict.agentAction.customer_message && (
+            <div style={{
+              margin: '10px 0',
+              padding: '12px',
+              borderRadius: '8px',
+              background: verdict.agentAction.action === 'BLOCK'
+                ? 'rgba(220, 38, 38, 0.08)'
+                : 'rgba(245, 158, 11, 0.08)',
+              border: `1px solid ${verdict.agentAction.action === 'BLOCK' ? 'rgba(220, 38, 38, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <span style={{
+                  fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em',
+                  color: verdict.agentAction.action === 'BLOCK' ? '#ef4444' : '#f59e0b'
+                }}>
+                  {verdict.agentAction.action === 'BLOCK' ? '🛑 AGENT: BLOCK NOTIFICATION' : '🔐 AGENT: OTP CHALLENGE'}
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: 1.5, margin: 0 }}>
+                {verdict.agentAction.customer_message}
+              </p>
+              {verdict.agentAction.analyst_case_note && (
+                <details style={{ marginTop: '8px' }}>
+                  <summary style={{ fontSize: '10px', color: '#94a3b8', cursor: 'pointer', fontWeight: 600 }}>
+                    VIEW ANALYST CASE NOTE
+                  </summary>
+                  <pre style={{
+                    fontSize: '10px', color: '#cbd5e1', marginTop: '6px',
+                    padding: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px',
+                    whiteSpace: 'pre-wrap', lineHeight: 1.4
+                  }}>
+                    {verdict.agentAction.analyst_case_note}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="inspector-actions-row">

@@ -3,13 +3,20 @@ FastAPI application entry point for Fraud Detection & Transaction Risk Agent.
 Handles REST endpoints, WebSocket connections, CORS, and dummy transaction simulator.
 """
 import asyncio
+import time
+import numpy as np
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.models import HealthResponse
-from backend.routes.transactions import router as transactions_router, process_transaction
+from backend.models import HealthResponse, BenchmarkResponse
+from backend.routes.transactions import (
+    router as transactions_router,
+    process_transaction,
+    get_model_status,
+    get_latency_benchmark,
+)
 from backend.routes.dashboard import router as dashboard_router
 from backend.websocket import manager
 from backend.mock_data import get_random_sample_transaction
@@ -45,9 +52,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Fraud Detection & Transaction Risk Agent API",
-    version="1.0.0",
-    description="Real-time transaction fraud scoring, risk assessment, and WebSocket alerts.",
+    title="FraudGuard — Pre-Authorization Fraud Detection API",
+    version="2.0.0",
+    description="Real-time transaction fraud scoring with SHAP explanations, latency benchmarks, and agentic interventions.",
     lifespan=lifespan,
 )
 
@@ -75,7 +82,52 @@ app.include_router(dashboard_router)
 async def health_check():
     return {
         "status": "ok",
-        "service": "fraud-detection-api",
+        "service": "fraudguard-api",
+        "model_status": get_model_status(),
+        "latency_benchmark": get_latency_benchmark(),
+    }
+
+
+@app.get("/api/benchmark", response_model=BenchmarkResponse, tags=["benchmark"])
+async def latency_benchmark():
+    """
+    Run 1,000 live inference requests and return p50/p95/p99 latency stats.
+    This proves the actual inference speed — not a claim, a measurement.
+    """
+    try:
+        from ml_engine.predictor import predict_transaction as ml_predict
+    except ImportError:
+        return {
+            "model_status": "mock",
+            "mean_ms": 0, "p50_ms": 0, "p95_ms": 0, "p99_ms": 0,
+            "n_requests": 0,
+        }
+
+    test_transactions = [
+        {"transaction_id": "BENCH-1", "amount": 450, "merchant": "Amazon",
+         "location": "Mumbai", "device": "mobile", "payment_method": "UPI"},
+        {"transaction_id": "BENCH-2", "amount": 95000, "merchant": "Unknown Merchant",
+         "location": "Dubai", "device": "new_device", "payment_method": "CARD"},
+        {"transaction_id": "BENCH-3", "amount": 8500, "merchant": "Croma",
+         "location": "Delhi", "device": "desktop", "payment_method": "CARD"},
+    ]
+
+    latencies = []
+    for i in range(1000):
+        tx = test_transactions[i % 3].copy()
+        t0 = time.perf_counter()
+        ml_predict(tx, compute_shap=False)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed_ms)
+
+    arr = np.array(latencies)
+    return {
+        "model_status": get_model_status(),
+        "mean_ms": round(float(np.mean(arr)), 2),
+        "p50_ms": round(float(np.percentile(arr, 50)), 2),
+        "p95_ms": round(float(np.percentile(arr, 95)), 2),
+        "p99_ms": round(float(np.percentile(arr, 99)), 2),
+        "n_requests": 1000,
     }
 
 

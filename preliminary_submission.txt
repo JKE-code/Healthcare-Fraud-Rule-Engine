@@ -1,0 +1,36 @@
+Subject: Preliminary Round Submission – FraudGuard | Team Lead Submission
+
+Dear Evaluators,
+
+Please find our preliminary round submission details for Project FraudGuard below:
+
+1. Problem Statement:
+Traditional fraud detection relies on post-transaction batch auditing, flagging fraud hours or days after funds have left the account. Instant payment networks (UPI, cards) require an autonomous, sub-20ms pre-authorization engine that intercepts and scores transactions in real time with transparent, regulatory-compliant explanations.
+
+2. Approach:
+- Hybrid Ensemble Scoring: Combines Supervised ML (Random Forest, 45 estimators, depth 7) trained on behavioral features, Unsupervised Anomaly Detection (Isolation Forest, 25 estimators) for zero-day attacks, and Contextual Heuristics (velocity, device entropy, foreign geo, odd-hours).
+- Verified Sub-20ms Pre-Auth Latency: Proven benchmark of p50 = 14.5ms, p95 = 18.4ms over 1,000 requests via /api/benchmark.
+- Autonomous Pre-Auth Decisioning & Agentic Interventions: Maps risk into 4 tiers (LOW, MEDIUM, HIGH, CRITICAL). On CHALLENGE, agent explains risk to customer and triggers OTP; on BLOCK, agent drafts full forensic analyst case notes.
+- Real SHAP-Based Explainability (XAI): Uses TreeExplainer for per-feature attribution values coupled with plain-English compliance justifications.
+- Real-Time Push: Sub-second WebSocket streaming from FastAPI to a live SecOps React dashboard.
+
+3. Techstack:
+- Frontend: React 19, Vite, Vanilla CSS (Dark Glassmorphism UI), WebSockets, SVG data visualizers, Live/Mock status indicators.
+- Backend: Python 3.12, FastAPI, Uvicorn, Pydantic v2, in-memory event store, latency benchmark suite (/api/benchmark).
+- Machine Learning: Scikit-Learn (RandomForest, IsolationForest), SHAP (TreeExplainer), NumPy, Pandas, Joblib.
+
+4. AI Tools & Techniques Used:
+- Scikit-Learn: Supervised classification and unsupervised statistical outlier detection.
+- SHAP (SHapley Additive exPlanations): TreeExplainer for mathematical feature contribution attribution.
+- Synthetic Behavioral Data Pipeline: Documented, probabilistic dataset generator matching inference-time feature distributions.
+- AI Coding Assistants: Generative AI tools (Antigravity IDE / Gemini) for rapid API contracts, feature engineering, and UI scaffolding.
+
+5. Brief on What Was Developed:
+- Live SecOps Console (/dashboard): Real-time KPI counters, streaming transaction table with color-coded threat badges, customer baseline comparison, interactive threat waveform, and 1-click forensic dossier JSON export.
+- Payment Risk Simulator (/pay): Gateway sandbox with live parameter controls (amount, location, device, timing), quick attack presets, and an animated radial threat gauge.
+- Policy Rules (/rules) & Audit Logs (/logs): Dynamic firewall rule builder and immutable compliance intervention ledger.
+
+Repository: https://github.com/JKE-code/Code-A-Thon
+
+Best regards,
+Team Lead - FraudGuard

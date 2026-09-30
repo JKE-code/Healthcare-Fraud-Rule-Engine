@@ -5,6 +5,7 @@ import { Payment } from './pages/Payment';
 import { PolicyRules } from './pages/PolicyRules';
 import { AuditLogs } from './pages/AuditLogs';
 import { initialMockTransactions } from './data/mockTransactions';
+import { API_URL } from './api';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState(() => {
@@ -17,6 +18,15 @@ export function App() {
 
   const [transactions, setTransactions] = useState(initialMockTransactions);
   const [wsStatus, setWsStatus] = useState('live');
+  const [modelStatus, setModelStatus] = useState(null);
+
+  // Fetch model status from health endpoint on mount
+  useEffect(() => {
+    fetch(`${API_URL}/api/health`)
+      .then(r => r.json())
+      .then(data => setModelStatus(data.model_status || 'mock'))
+      .catch(() => setModelStatus('offline'));
+  }, []);
 
   useEffect(() => {
     function handlePopState() {
@@ -46,6 +56,7 @@ export function App() {
         currentRoute={currentRoute}
         onNavigate={navigate}
         wsStatus={wsStatus}
+        modelStatus={modelStatus}
       />
 
       <main className="app-main-content">

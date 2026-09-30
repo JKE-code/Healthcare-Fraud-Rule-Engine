@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Navbar({ currentRoute, onNavigate, wsStatus }) {
+export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
   return (
     <header className="navbar-container">
       <div className="navbar-inner">
@@ -58,11 +58,20 @@ export function Navbar({ currentRoute, onNavigate, wsStatus }) {
           <div className="system-live-pill">
             <span className="live-dot-pulse">
               <span className="dot-ping" />
-              <span className="dot-core" />
+              <span className="dot-core" style={
+                modelStatus === 'live' ? {} :
+                modelStatus === 'mock' ? { background: '#f59e0b' } :
+                { background: '#ef4444' }
+              } />
             </span>
-            <span className="live-pill-text">LIVE</span>
+            <span className="live-pill-text">
+              {modelStatus === 'live' ? 'LIVE' : modelStatus === 'mock' ? 'MOCK' : 'OFFLINE'}
+            </span>
             <span className="live-pill-divider" />
-            <span className="live-pill-status">System Status: Active</span>
+            <span className="live-pill-status">
+              {modelStatus === 'live' ? 'Model: Live ML' :
+               modelStatus === 'mock' ? 'Model: Mock Mode' : 'Model: Offline'}
+            </span>
           </div>
 
           <div className="user-avatar-btn" title="SecOps Admin (nishanth@fraudguard)">

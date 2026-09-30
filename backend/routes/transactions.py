@@ -1,4 +1,5 @@
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import Dict, Any
 
@@ -11,15 +12,44 @@ from backend.websocket import manager
 import importlib
 
 # Dynamic ML predictor resolver (checks ml_engine.predictor first, falls back to mock_predict)
+# Now transparently reports which mode is active.
+_ml_module = None
+_ml_available = False
+
+try:
+    _ml_module = importlib.import_module("ml_engine.predictor")
+    if hasattr(_ml_module, "predict_transaction"):
+        _ml_available = True
+except (ImportError, ModuleNotFoundError):
+    pass
+
+
 def predict_transaction(tx_payload: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        ml_module = importlib.import_module("ml_engine.predictor")
-        if hasattr(ml_module, "predict_transaction"):
-            return ml_module.predict_transaction(tx_payload)
-    except (ImportError, ModuleNotFoundError):
-        pass
+    if _ml_available:
+        return _ml_module.predict_transaction(tx_payload)
     from backend.mock_data import mock_predict
-    return mock_predict(tx_payload)
+    result = mock_predict(tx_payload)
+    result["model_status"] = "mock"
+    result["inference_latency_ms"] = None
+    result["shap_values"] = {}
+    result["shap_available"] = False
+    result["agent_action"] = {"action": "APPROVE", "customer_message": None, "analyst_case_note": None}
+    return result
+
+
+def get_model_status() -> str:
+    """Get current model status for health checks."""
+    if _ml_available and hasattr(_ml_module, "get_model_status"):
+        return _ml_module.get_model_status()
+    return "mock"
+
+
+def get_latency_benchmark() -> dict:
+    """Get stored latency benchmark from training."""
+    if _ml_available and hasattr(_ml_module, "get_latency_benchmark"):
+        return _ml_module.get_latency_benchmark()
+    return None
+
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -93,7 +123,7 @@ def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
     ml_explanations = list(ml_result.get("explanation", []))
     combined_explanations = list(dict.fromkeys(ml_explanations + behaviour_eval["explanations"]))
 
-    # Combine transaction data + ML results (contract frozen in spec)
+    # Combine transaction data + ML results
     combined: Dict[str, Any] = {
         "transaction_id": tx_id,
         "timestamp": now_iso,
@@ -113,6 +143,12 @@ def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
         "prediction": prediction,
         "decision": decision,
         "explanation": combined_explanations,
+        # New fields from origin/main
+        "shap_values": ml_result.get("shap_values", {}),
+        "shap_available": ml_result.get("shap_available", False),
+        "model_status": ml_result.get("model_status", "mock"),
+        "inference_latency_ms": ml_result.get("inference_latency_ms", None),
+        "agent_action": ml_result.get("agent_action", None),
     }
 
     # In-memory storage

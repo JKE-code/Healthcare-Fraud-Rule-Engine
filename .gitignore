@@ -40,10 +40,8 @@ venv.bak/
 Thumbs.db
 .DS_Store
 
-# ML Models / Large artifacts
-ml_engine/models/*.pkl
-*.joblib
-!ml_engine/models/*.gitkeep
+# ML Models / Large artifacts (trained models are lightweight ~1.5MB total and tracked for zero-setup demo)
+# ml_engine/models/*.pkl
 
 # Dataset files
 *.csv

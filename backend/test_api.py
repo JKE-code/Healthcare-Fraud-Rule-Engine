@@ -22,7 +22,7 @@ def run_tests():
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["service"] == "fraud-detection-api"
+    assert data["service"] in ("fraudguard-api", "fraud-detection-api")
     print("[PASS] GET /api/health passed:", data)
 
     print("\n--- 2. Testing POST /api/transactions (Normal) ---")

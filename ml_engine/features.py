@@ -1,39 +1,49 @@
 """
 Feature engineering for fraud detection.
 
-Handles two modes:
-1. Training mode: transforms raw dataset features (Time, V1..V28, Amount)
-2. Inference mode: maps frontend transaction dicts to model-compatible vectors
+Extracts behavioral risk features from a transaction dict that match
+the training feature space exactly:
+
+    amount          — transaction amount (INR)
+    merchant_risk   — 0-1 risk score from merchant lookup
+    location_risk   — 0-1 risk score from location lookup
+    device_risk     — 0-1 risk score from device type
+    payment_risk    — 0-1 risk score from payment method
+    hour            — hour of day (0-23)
+    amount_deviation— ratio of amount to typical Rs 2500
+
+No synthetic PCA projections.  The model is trained directly on these
+features, so inference uses the same space — no feature mismatch.
 """
 
 import numpy as np
 import os
 import joblib
+import warnings
+warnings.filterwarnings("ignore")
 
 # --- paths ---
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _MODELS_DIR = os.path.join(_DIR, "models")
 
-# --- load scaler & metadata at import time ---
+# --- load scaler at import time ---
 _scaler = None
-_metadata = None
 
 def _load_artifacts():
-    global _scaler, _metadata
+    global _scaler
     scaler_path = os.path.join(_MODELS_DIR, "scaler.pkl")
-    meta_path = os.path.join(_MODELS_DIR, "metadata.pkl")
     if os.path.exists(scaler_path):
         _scaler = joblib.load(scaler_path)
-    if os.path.exists(meta_path):
-        _metadata = joblib.load(meta_path)
 
 _load_artifacts()
 
-# ---------- constants for synthetic feature generation ----------
+# ---------- risk lookup tables ----------
+# These map raw transaction fields to the risk-score features
+# the model was trained on (from generate_dataset.py distributions).
 
-# Known-safe merchants get a low risk signal; unknowns get a high one.
 MERCHANT_RISK = {
     "amazon": 0.05,
+    "amazon india": 0.05,
     "flipkart": 0.08,
     "swiggy": 0.06,
     "zomato": 0.06,
@@ -44,17 +54,24 @@ MERCHANT_RISK = {
     "google pay": 0.04,
     "uber": 0.10,
     "ola": 0.09,
+    "netflix": 0.05,
+    "starbucks": 0.06,
+    "blinkit": 0.06,
+    "croma electronics": 0.10,
 }
 
 LOCATION_RISK = {
     "mumbai": 0.05,
     "delhi": 0.08,
     "bangalore": 0.05,
+    "bengaluru": 0.05,
     "hyderabad": 0.06,
     "chennai": 0.06,
     "kolkata": 0.07,
     "pune": 0.06,
     "ahmedabad": 0.07,
+    "jaipur": 0.08,
+    "goa": 0.10,
 }
 
 DEVICE_RISK = {
@@ -68,102 +85,109 @@ PAYMENT_RISK = {
     "upi": 0.05,
     "card": 0.25,
     "net_banking": 0.15,
+    "netbanking": 0.15,
     "wallet": 0.10,
 }
 
-# Average legitimate transaction amount (for deviation calc)
+# Typical legitimate transaction amount
 NORMAL_AMOUNT = 2500.0
 
+# Feature names matching training column order
+FEATURE_NAMES = [
+    "amount", "merchant_risk", "location_risk",
+    "device_risk", "payment_risk", "hour", "amount_deviation",
+]
 
-def transform_for_model(transaction: dict) -> np.ndarray:
+
+def extract_features(transaction: dict) -> dict:
     """
-    Convert a frontend transaction dict into the 30-feature vector
-    (Time, V1..V28, Amount) that the trained models expect.
+    Extract individual risk features from a transaction dict.
 
-    Strategy:
-    - Amount → use actual amount (scaled if scaler available)
-    - Time   → synthetic: 0 (irrelevant for demo)
-    - V1..V28→ deterministic synthetic values derived from the transaction
-               context so that risky transactions produce feature patterns
-               that sit in the "fraud" region the classifier learned.
+    Returns a dict with each named feature — useful for SHAP explanations
+    and for building the feature vector.
     """
     amount = float(transaction.get("amount", 0))
-    merchant = str(transaction.get("merchant", "")).lower()
-    location = str(transaction.get("location", "")).lower()
-    device = str(transaction.get("device", "")).lower()
-    payment_method = str(transaction.get("payment_method", "")).lower()
+    merchant = str(transaction.get("merchant", "")).lower().strip()
+    location = str(transaction.get("location", "")).lower().strip()
+    device = str(transaction.get("device", "")).lower().strip()
+    payment_method = str(transaction.get("payment_method", "")).lower().strip()
 
-    # --- risk signals ---
+    # Merchant risk: unknown merchants get high risk
     merchant_risk = MERCHANT_RISK.get(merchant, 0.70)
     if "unknown" in merchant:
         merchant_risk = 0.85
 
+    # Location risk: foreign / unknown locations get high risk
     location_risk = LOCATION_RISK.get(location, 0.65)
+
+    # Device risk: new/unrecognized devices get high risk
     device_risk = DEVICE_RISK.get(device, 0.50)
+
+    # Payment risk
     payment_risk = PAYMENT_RISK.get(payment_method, 0.15)
 
-    amount_deviation = amount / NORMAL_AMOUNT  # >1 = suspicious
+    # Hour extraction
+    hour = 12.0  # default midday
+    timing_str = str(transaction.get("timing", "")).strip()
+    if not timing_str:
+        ts = str(transaction.get("timestamp", ""))
+        if "T" in ts:
+            timing_str = ts.split("T")[1][:5]
+    if timing_str:
+        try:
+            hour = float(int(timing_str.split(":")[0]))
+        except (ValueError, IndexError):
+            pass
 
-    # Composite risk signal 0‒1
-    context_signal = min(1.0, (
-        0.30 * merchant_risk +
-        0.20 * location_risk +
-        0.25 * device_risk +
-        0.10 * payment_risk +
-        0.15 * min(amount_deviation / 40, 1.0)
-    ))
+    # Amount deviation from normal
+    amount_deviation = amount / NORMAL_AMOUNT
 
-    # --- build synthetic V1..V28 ---
-    # The credit-card PCA dataset has V1..V28 centred around 0 for
-    # legitimate transactions.  Fraud rows tend to have large negative V1,
-    # V3, V7, V10, V14, V17 and large positive V4, V11, V12, V16.
-    # We push the synthetic vector towards the fraud region proportionally
-    # to the context risk signal.
+    return {
+        "amount": amount,
+        "merchant_risk": merchant_risk,
+        "location_risk": location_risk,
+        "device_risk": device_risk,
+        "payment_risk": payment_risk,
+        "hour": hour,
+        "amount_deviation": amount_deviation,
+    }
 
-    rng = np.random.RandomState(int(amount * 100) % (2**31))  # deterministic per amount
-    base = rng.randn(28) * 0.2  # small noise around zero (looks normal)
 
-    # Shift fraud-indicative components proportionally
-    # Must be aggressive enough that the RandomForest actually classifies
-    # high-risk demo transactions as fraud.
-    fraud_shift = context_signal * 8.0  # strong push into fraud region
+def transform_for_model(transaction: dict) -> np.ndarray:
+    """
+    Convert a frontend transaction dict into the 7-feature vector
+    that the trained models expect.
 
-    # Components that go strongly negative in fraud
-    # V1(idx0), V3(idx2), V5(idx4), V7(idx6), V10(idx9), V14(idx13), V17(idx16)
-    for idx in [0, 2, 4, 6, 9, 13, 16]:
-        base[idx] = -(fraud_shift * (1.5 + rng.rand() * 0.5))
+    Features: [amount, merchant_risk, location_risk, device_risk,
+               payment_risk, hour, amount_deviation]
 
-    # Components that go strongly positive in fraud
-    # V4(idx3), V11(idx10), V12(idx11), V16(idx15)
-    for idx in [3, 10, 11, 15]:
-        base[idx] = fraud_shift * (1.0 + rng.rand() * 0.4)
+    Returns shape (1, 7) numpy array ready for model.predict().
+    """
+    feats = extract_features(transaction)
 
-    # For low-risk transactions, dampen everything back towards zero
-    dampen = context_signal ** 0.7  # nonlinear: low risk → very dampened
-    base *= dampen
+    features = np.array([[
+        feats["amount"],
+        feats["merchant_risk"],
+        feats["location_risk"],
+        feats["device_risk"],
+        feats["payment_risk"],
+        feats["hour"],
+        feats["amount_deviation"],
+    ]])
 
-    # --- assemble feature vector: [Time, V1..V28, Amount] ---
-    time_val = 0.0
-    features = np.zeros(30)
-    features[0] = time_val
-    features[1:29] = base
-    features[29] = amount
-
-    # Scale Time and Amount if scaler is available
+    # Scale if scaler available (trained scaler from train.py)
     if _scaler is not None:
         try:
-            scaled = _scaler.transform([[time_val, amount]])
-            features[0] = scaled[0][0]
-            features[29] = scaled[0][1]
+            features = _scaler.transform(features)
         except Exception:
-            pass  # if scaler shape mismatch, leave raw values
+            pass  # shape mismatch guard
 
-    return features.reshape(1, -1)
+    return features
 
 
 def normalize_anomaly(raw_score: float) -> float:
     """
-    Convert IsolationForest decision_function output to 0‒1 score.
+    Convert IsolationForest decision_function output to 0–1 score.
     decision_function returns negative for anomalies, positive for normal.
     We invert: 0 = normal, 1 = highly anomalous.
     """

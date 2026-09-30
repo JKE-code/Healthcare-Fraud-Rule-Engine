@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class TransactionRequest(BaseModel):
@@ -12,6 +12,12 @@ class TransactionRequest(BaseModel):
     channel: Optional[str] = Field("UPI", description="Transaction channel (UPI, CREDIT_CARD, DEBIT_CARD)")
     timing: Optional[str] = Field(None, description="Transaction time (e.g. 14:30 or 03:00)")
     timestamp: Optional[str] = Field(None, description="Optional ISO timestamp")
+
+
+class AgentAction(BaseModel):
+    action: str = Field(..., description="APPROVE, CHALLENGE_OTP, or BLOCK")
+    customer_message: Optional[str] = Field(None, description="Customer-facing message")
+    analyst_case_note: Optional[str] = Field(None, description="Analyst case note for BLOCK actions")
 
 
 class TransactionResponse(BaseModel):
@@ -33,6 +39,12 @@ class TransactionResponse(BaseModel):
     prediction: str
     decision: Optional[str] = "APPROVE"  # APPROVE, REVIEW, BLOCK
     explanation: List[str]
+    # New fields from review feedback
+    shap_values: Optional[Dict[str, float]] = Field(default=None, description="SHAP feature contributions")
+    shap_available: Optional[bool] = Field(default=False, description="Whether SHAP explanations are available")
+    model_status: Optional[str] = Field(default="mock", description="'live' or 'mock' — is the ML model loaded?")
+    inference_latency_ms: Optional[float] = Field(default=None, description="Server-side inference latency in ms")
+    agent_action: Optional[AgentAction] = Field(default=None, description="Agentic intervention details")
 
 
 class TransactionListResponse(BaseModel):
@@ -43,6 +55,8 @@ class TransactionListResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+    model_status: Optional[str] = Field(default=None, description="'live' or 'mock'")
+    latency_benchmark: Optional[Dict[str, Any]] = Field(default=None, description="p50/p95/p99 latency stats")
 
 
 class DashboardStatsResponse(BaseModel):
@@ -52,3 +66,12 @@ class DashboardStatsResponse(BaseModel):
     avg_risk_score: float
     risk_distribution: dict
     prediction_distribution: dict
+
+
+class BenchmarkResponse(BaseModel):
+    model_status: str
+    mean_ms: float
+    p50_ms: float
+    p95_ms: float
+    p99_ms: float
+    n_requests: int
