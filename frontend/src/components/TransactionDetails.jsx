@@ -203,6 +203,20 @@ export function TransactionDetails({
             <span className="kv-val">{tx.customer_id || 'CUST-1001'}</span>
           </div>
           <div className="kv-row">
+            <span className="kv-key">Data Source:</span>
+            <span
+              className="kv-val"
+              style={{
+                color: (tx.channel === 'KAGGLE_DATASET' || tx.channel === 'KAGGLE_LIVE') ? '#38bdf8' : '#34d399',
+                fontWeight: 700,
+              }}
+            >
+              {(tx.channel === 'KAGGLE_DATASET' || tx.channel === 'KAGGLE_LIVE')
+                ? '🔵 Real Kaggle Dataset (kartik2112)'
+                : '🟢 Synthetic Persona Stream'}
+            </span>
+          </div>
+          <div className="kv-row">
             <span className="kv-key">Merchant:</span>
             <span className="kv-val">{tx.merchant}</span>
           </div>
@@ -305,6 +319,82 @@ export function TransactionDetails({
               ))
             )}
           </ul>
+        </div>
+
+        {/* Machine Learning Model Insights & SHAP Attribution */}
+        <div
+          style={{
+            padding: '12px',
+            borderRadius: '8px',
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            marginTop: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#38bdf8' }}>
+              <span>🧠</span>
+              <span>ML INFERENCE & SHAP EXPLAINABILITY</span>
+            </div>
+            <span
+              style={{
+                fontSize: '9px',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                fontWeight: 700,
+                background: tx.shap_available ? 'rgba(56, 189, 248, 0.2)' : 'rgba(148, 163, 184, 0.2)',
+                color: tx.shap_available ? '#38bdf8' : '#94a3b8',
+                border: `1px solid ${tx.shap_available ? 'rgba(56, 189, 248, 0.4)' : 'rgba(148, 163, 184, 0.3)'}`,
+              }}
+            >
+              {tx.shap_available ? 'SHAP TreeExplainer Active' : 'Ensemble ML Ready'}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ padding: '6px 8px', borderRadius: '4px', background: 'rgba(30, 41, 59, 0.7)', border: '1px solid #334155' }}>
+              <div style={{ fontSize: '10px', color: '#94a3b8' }}>ML Fraud Likelihood</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: (tx.fraud_probability || 0) > 0.5 ? '#f87171' : '#34d399', fontFamily: 'monospace' }}>
+                {((tx.fraud_probability || 0) * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div style={{ padding: '6px 8px', borderRadius: '4px', background: 'rgba(30, 41, 59, 0.7)', border: '1px solid #334155' }}>
+              <div style={{ fontSize: '10px', color: '#94a3b8' }}>IsoForest Anomaly</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: (tx.anomaly_score || 0) > 0.5 ? '#fbbf24' : '#38bdf8', fontFamily: 'monospace' }}>
+                {((tx.anomaly_score || 0) * 100).toFixed(1)}%
+              </div>
+            </div>
+          </div>
+
+          {tx.shap_values && Object.keys(tx.shap_values).length > 0 && (
+            <div>
+              <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px', textTransform: 'uppercase' }}>
+                SHAP Feature Attribution:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {Object.entries(tx.shap_values).slice(0, 5).map(([feature, val]) => {
+                  const numVal = Number(val);
+                  const isPositive = numVal >= 0;
+                  return (
+                    <div key={feature} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px' }}>
+                      <span style={{ color: '#cbd5e1', textTransform: 'capitalize' }}>
+                        {feature.replace(/_/g, ' ')}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          color: isPositive ? '#f87171' : '#34d399',
+                        }}
+                      >
+                        {isPositive ? `+${numVal.toFixed(4)}` : numVal.toFixed(4)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Reviewer Action Form */}

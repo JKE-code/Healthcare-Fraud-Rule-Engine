@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchRules, updateRuleConfig } from '../api';
+import { fetchRules, updateRuleConfig, fetchRuleAnalytics } from '../api';
 
 const DEFAULT_METADATA = {
   RULE_VELOCITY: {
@@ -55,8 +55,19 @@ export function PolicyRules() {
 
   const loadLiveRules = async () => {
     try {
-      const data = await fetchRules();
-      const mapped = data.map((r) => {
+      const [data, analytics] = await Promise.allSettled([
+        fetchRules(),
+        fetchRuleAnalytics(),
+      ]);
+
+      const rulesData = data.status === 'fulfilled' ? data.value : [];
+      const analyticsList = analytics.status === 'fulfilled' && Array.isArray(analytics.value) ? analytics.value : [];
+      const analyticsMap = new Map();
+      analyticsList.forEach((item) => {
+        if (item.rule_code) analyticsMap.set(item.rule_code, item);
+      });
+
+      const mapped = rulesData.map((r) => {
         const meta = DEFAULT_METADATA[r.rule_code] || {
           category: 'Custom Rules',
           action: 'MANUAL REVIEW',
@@ -66,6 +77,12 @@ export function PolicyRules() {
           falsePositiveRate: '0.5%',
           confidence: '98.0%',
         };
+
+        const liveMetric = analyticsMap.get(r.rule_code);
+        const triggered = liveMetric?.triggered_count != null ? liveMetric.triggered_count : meta.triggeredToday;
+        const fpRate = liveMetric?.false_positive_rate != null ? `${(liveMetric.false_positive_rate * 100).toFixed(1)}%` : meta.falsePositiveRate;
+        const conf = liveMetric?.false_positive_rate != null ? `${(100 - (liveMetric.false_positive_rate * 100)).toFixed(1)}%` : meta.confidence;
+
         return {
           id: r.rule_code,
           name: r.name,
@@ -77,9 +94,9 @@ export function PolicyRules() {
           enabled: r.enabled,
           weight: r.weight,
           parameters: { ...(r.parameters || {}) },
-          triggeredToday: meta.triggeredToday,
-          falsePositiveRate: meta.falsePositiveRate,
-          confidence: meta.confidence,
+          triggeredToday: triggered,
+          falsePositiveRate: fpRate,
+          confidence: conf,
         };
       });
       setRules(mapped);

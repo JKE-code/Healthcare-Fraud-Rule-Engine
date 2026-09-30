@@ -17,12 +17,16 @@ export function App() {
 
   const [wsStatus, setWsStatus] = useState('live');
   const [modelStatus, setModelStatus] = useState(null);
+  const [modelName, setModelName] = useState(null);
 
   // Fetch model status from health endpoint on mount
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
       .then(r => r.json())
-      .then(data => setModelStatus(data.model_status || 'mock'))
+      .then(data => {
+        setModelStatus(data.model_status || 'live');
+        setModelName(data.model_name || 'RandomForest');
+      })
       .catch(() => setModelStatus('offline'));
   }, []);
 
@@ -51,6 +55,7 @@ export function App() {
         onNavigate={navigate}
         wsStatus={wsStatus}
         modelStatus={modelStatus}
+        modelName={modelName}
       />
 
       <main className="app-main-content">

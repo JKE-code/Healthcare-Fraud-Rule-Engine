@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
+export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus, modelName }) {
   return (
     <header className="navbar-container">
       <div className="navbar-inner">
@@ -55,6 +55,25 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
 
         {/* Right Status & User Avatar */}
         <div className="navbar-right">
+          {/* Dual-Engine ML Status Pill */}
+          <div
+            className="system-live-pill"
+            style={{
+              background: 'rgba(56, 189, 248, 0.12)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+            }}
+            title="Active Dual-Engine ML Classifier & SHAP Explainability Engine"
+          >
+            <span style={{ fontSize: '11px' }}>🧠</span>
+            <span className="live-pill-text" style={{ color: '#38bdf8' }}>
+              ML {modelStatus === 'live' ? 'ONLINE' : 'ACTIVE'}
+            </span>
+            <span className="live-pill-divider" />
+            <span className="live-pill-status" style={{ color: '#bae6fd' }}>
+              {modelName || 'RandomForest'}
+            </span>
+          </div>
+
           <div className="system-live-pill">
             <span className="live-dot-pulse">
               <span className="dot-ping" />

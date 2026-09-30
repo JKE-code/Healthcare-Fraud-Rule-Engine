@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAuditLogs } from '../api';
+import { fetchAuditLogs, API_URL } from '../api';
 
 const INITIAL_LOGS = [
   {
@@ -206,7 +206,22 @@ export function AuditLogs() {
           </div>
           <button
             className="btn-export-logs"
-            onClick={() => alert('Log archive exported to JSON format with SHA-256 manifest.')}
+            onClick={async () => {
+              try {
+                const res = await fetch(`${API_URL}/api/audit-logs/export`);
+                if (!res.ok) throw new Error(`Server returned ${res.status}`);
+                const data = await res.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `acentra_audit_trail_compliance_export_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (err) {
+                alert(`Export failed: ${err.message}`);
+              }
+            }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
