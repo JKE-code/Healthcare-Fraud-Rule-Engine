@@ -32,13 +32,15 @@ from backend.customer_profiles import evaluate_customer_behaviour
 
 def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
     tx_id = generate_transaction_id()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = request_data.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    timing_val = request_data.get("timing") or ""
     cust_id = request_data.get("customer_id", "CUST-1001")
     channel = request_data.get("channel", "UPI")
 
     tx_payload = {
         "transaction_id": tx_id,
         "timestamp": now_iso,
+        "timing": timing_val,
         "customer_id": cust_id,
         "channel": channel,
         "amount": request_data["amount"],
@@ -95,6 +97,7 @@ def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
     combined: Dict[str, Any] = {
         "transaction_id": tx_id,
         "timestamp": now_iso,
+        "timing": timing_val,
         "customer_id": cust_id,
         "channel": channel,
         "amount": request_data["amount"],

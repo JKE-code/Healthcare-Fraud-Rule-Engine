@@ -136,10 +136,8 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
         <div className="banner-left">
           <div className="banner-title-line">
             <h1 className="banner-main-title">Fraud Detection & Transaction Risk Agent</h1>
-            <span className="banner-core-version">v4.19-CORE</span>
           </div>
           <div className="banner-subline">
-            <span className="banner-engine-tag">+ AUTONOMOUS ENGINE</span>
             <span className="banner-desc">Real-time telemetry, probabilistic scoring, and autonomous rule intervention</span>
           </div>
         </div>
@@ -148,26 +146,7 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           <div className="system-online-badge">
             <span className="online-emerald-dot" />
             <span className="online-label">SYSTEM ONLINE</span>
-            <span className="latency-text">Latency 14ms</span>
           </div>
-
-          <button
-            className="btn-risk-config"
-            onClick={() => alert('Risk Configuration: Classification model = Random Forest / XGBoost, Anomaly = Isolation Forest (contamination=0.01).')}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="4" y1="21" x2="4" y2="14" />
-              <line x1="4" y1="10" x2="4" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12" y2="3" />
-              <line x1="20" y1="21" x2="20" y2="16" />
-              <line x1="20" y1="12" x2="20" y2="3" />
-              <line x1="1" y1="14" x2="7" y2="14" />
-              <line x1="9" y1="8" x2="15" y2="8" />
-              <line x1="17" y1="16" x2="23" y2="16" />
-            </svg>
-            Risk Config
-          </button>
 
           <button
             className={`btn-auto-simulation ${isAutoSim ? 'sim-on' : 'sim-off'}`}
@@ -187,8 +166,6 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           value={dynamicTotal.toLocaleString()}
           badgeText="+12 today"
           badgeType="green"
-          leftStat="Capacity: 74%"
-          rightStat="Limit: 25k/hr"
           iconType="total"
           cardTheme="default"
         />
@@ -198,8 +175,6 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           value={dynamicFraud.toLocaleString()}
           badgeText="+4 today"
           badgeType="red"
-          leftStat="Rate: 1.82%"
-          rightStat="Tolerance <2.0%"
           iconType="fraud"
           cardTheme="fraud"
         />
@@ -209,8 +184,6 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           value={dynamicHighRisk.toLocaleString()}
           badgeText="+8 today"
           badgeType="amber"
-          leftStat="Flagged: 32% of queue"
-          rightStat="Needs Review"
           iconType="high-risk"
           cardTheme="high-risk"
         />
@@ -220,8 +193,6 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           value="18.4%"
           badgeText="↓ 2.3% vs y'day"
           badgeType="green"
-          leftStat="Status: Optimum <25%"
-          rightStat="StdDev: 4.1"
           iconType="avg-risk"
           cardTheme="default"
         />
@@ -256,8 +227,8 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       {/* 3 Bottom Charts */}
       <section className="secops-charts-row" aria-label="Analytical Telemetry">
         <FraudChart transactions={transactions} />
-        <RiskChart />
-        <ActivityChart />
+        <RiskChart transactions={transactions} />
+        <ActivityChart transactions={transactions} selectedTx={selectedTx} />
       </section>
 
       {/* Floating Alert Toast (bottom-right) */}

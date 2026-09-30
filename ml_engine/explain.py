@@ -50,6 +50,20 @@ def explain_transaction(
             f"Transaction location ({location.title()}) differs from normal activity zones"
         )
 
+    # Timing explanation
+    timing_str = str(transaction.get("timing", "")).strip()
+    if not timing_str:
+        ts = str(transaction.get("timestamp", ""))
+        if "T" in ts:
+            timing_str = ts.split("T")[1][:5]
+    if timing_str:
+        try:
+            hour = int(timing_str.split(":")[0])
+            if 0 <= hour <= 5:
+                reasons.append(f"Transaction initiated at unusual late-night hour ({timing_str})")
+        except (ValueError, IndexError):
+            pass
+
     # --- model-derived reasons ---
 
     if anomaly_score > 0.7:

@@ -117,6 +117,49 @@ export function PolicyRules() {
   });
 
   const activeCount = rules.filter((r) => r.enabled).length;
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newRule, setNewRule] = useState({
+    name: '',
+    category: 'Velocity & Volume',
+    description: '',
+    condition: '',
+    action: 'AUTONOMOUS BLOCK',
+    actionType: 'block'
+  });
+
+  const handleCreateRule = (e) => {
+    e.preventDefault();
+    if (!newRule.name.trim() || !newRule.condition.trim()) {
+      showToast('Please enter a rule name and condition expression.');
+      return;
+    }
+
+    const created = {
+      id: `RULE-CUST-${String(rules.length + 1).padStart(2, '0')}`,
+      name: newRule.name.trim(),
+      category: newRule.category,
+      description: newRule.description.trim() || 'Custom policy rule defined by analyst.',
+      condition: newRule.condition.trim(),
+      action: newRule.action,
+      actionType: newRule.actionType,
+      enabled: true,
+      triggeredToday: 0,
+      falsePositiveRate: '0.1%',
+      confidence: '99.5%'
+    };
+
+    setRules([created, ...rules]);
+    setIsCreateModalOpen(false);
+    setNewRule({
+      name: '',
+      category: 'Velocity & Volume',
+      description: '',
+      condition: '',
+      action: 'AUTONOMOUS BLOCK',
+      actionType: 'block'
+    });
+    showToast(`Successfully created rule ${created.id}!`);
+  };
 
   return (
     <div className="rules-page-container">
@@ -130,13 +173,118 @@ export function PolicyRules() {
         </div>
       )}
 
+      {/* Create Rule Modal */}
+      {isCreateModalOpen && (
+        <div className="drawer-overlay" style={{ zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card-inner-pad" style={{
+            background: 'var(--color-bg-secondary, #1e293b)',
+            borderRadius: '12px',
+            border: '1px solid var(--color-border, #334155)',
+            padding: '24px',
+            maxWidth: '520px',
+            width: '90%',
+            color: '#fff',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Create New Risk Rule</h3>
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRule}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
+                  RULE NAME
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Block High-Value Night Crypto"
+                  value={newRule.name}
+                  onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#0f172a', border: '1px solid #334155', color: '#fff' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
+                  CATEGORY
+                </label>
+                <select
+                  value={newRule.category}
+                  onChange={(e) => setNewRule({ ...newRule, category: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#0f172a', border: '1px solid #334155', color: '#fff' }}
+                >
+                  <option value="Velocity & Volume">Velocity & Volume</option>
+                  <option value="Geolocation & IP">Geolocation & IP</option>
+                  <option value="Device & Identity">Device & Identity</option>
+                  <option value="Merchant & Gateway">Merchant & Gateway</option>
+                  <option value="Machine Learning">Machine Learning</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
+                  TRIGGER CONDITION (EXPRESSION)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. amount > 50000 && location != 'home_country'"
+                  value={newRule.condition}
+                  onChange={(e) => setNewRule({ ...newRule, condition: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
+                  AUTONOMOUS ACTION
+                </label>
+                <select
+                  value={newRule.action}
+                  onChange={(e) => {
+                    const act = e.target.value;
+                    const type = act.includes('BLOCK') ? 'block' : (act.includes('CHALLENGE') ? 'challenge' : 'review');
+                    setNewRule({ ...newRule, action: act, actionType: type });
+                  }}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: '#0f172a', border: '1px solid #334155', color: '#fff' }}
+                >
+                  <option value="AUTONOMOUS BLOCK">AUTONOMOUS BLOCK (Reject 403)</option>
+                  <option value="QUARANTINE & STEP-UP OTP">QUARANTINE & STEP-UP OTP (Challenge 302)</option>
+                  <option value="MANUAL REVIEW">MANUAL SOC REVIEW</option>
+                  <option value="SHADOW MONITOR">SHADOW MONITOR (Silent Alert)</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  style={{ padding: '8px 16px', borderRadius: '6px', background: '#334155', border: 'none', color: '#fff', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: '8px 16px', borderRadius: '6px', background: '#2563eb', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Save & Enable Rule
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="rules-header-strip">
         <div className="rules-title-group">
-          <div className="rules-badge-row">
-            <span className="rules-pill-kicker">AUTONOMOUS INTERVENTION ENGINE</span>
-            <span className="rules-version-tag">POLICY ENGINE v4.19</span>
-          </div>
           <h1 className="rules-main-heading">Fraud Policy Rules & Risk Thresholds</h1>
           <p className="rules-sub-heading">
             Configure real-time algorithmic heuristics, threshold barriers, and automated intervention actions.
@@ -148,13 +296,9 @@ export function PolicyRules() {
             <span className="m-label">ACTIVE RULES</span>
             <span className="m-val text-emerald">{activeCount} / {rules.length}</span>
           </div>
-          <div className="metric-pill-box">
-            <span className="m-label">DECISION LATENCY</span>
-            <span className="m-val font-mono">1.8ms</span>
-          </div>
           <button
             className="btn-create-rule"
-            onClick={() => showToast('Custom rule template generator initialized.')}
+            onClick={() => setIsCreateModalOpen(true)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19" />

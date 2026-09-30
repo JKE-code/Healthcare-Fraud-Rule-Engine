@@ -10,6 +10,8 @@ class TransactionRequest(BaseModel):
     payment_method: str = Field(..., min_length=1, description="Payment method (e.g. CARD, UPI)")
     customer_id: Optional[str] = Field("CUST-1001", description="Customer profile ID")
     channel: Optional[str] = Field("UPI", description="Transaction channel (UPI, CREDIT_CARD, DEBIT_CARD)")
+    timing: Optional[str] = Field(None, description="Transaction time (e.g. 14:30 or 03:00)")
+    timestamp: Optional[str] = Field(None, description="Optional ISO timestamp")
 
 
 class TransactionResponse(BaseModel):
@@ -22,6 +24,7 @@ class TransactionResponse(BaseModel):
     payment_method: str
     customer_id: Optional[str] = "CUST-1001"
     channel: Optional[str] = "UPI"
+    timing: Optional[str] = None
     fraud_probability: float
     anomaly_score: float
     risk_score: float

@@ -48,6 +48,21 @@ def contextual_risk(transaction: dict) -> float:
     if payment_method == "card":
         score += 0.05
 
+    # Timing risk (late night 00:00 - 05:00)
+    timing_str = str(transaction.get("timing", "")).strip()
+    if not timing_str:
+        # Check ISO timestamp if available
+        ts = str(transaction.get("timestamp", ""))
+        if "T" in ts:
+            timing_str = ts.split("T")[1][:5]
+    if timing_str:
+        try:
+            hour = int(timing_str.split(":")[0])
+            if 0 <= hour <= 5:
+                score += 0.15
+        except (ValueError, IndexError):
+            pass
+
     return min(score, 1.0)
 
 

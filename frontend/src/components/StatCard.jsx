@@ -34,10 +34,12 @@ export function StatCard({
           )}
         </div>
 
-        <div className="stat-footer-metrics">
-          <span className="footer-metric-left">{leftStat}</span>
-          <span className="footer-metric-right">{rightStat}</span>
-        </div>
+        {(leftStat || rightStat) && (
+          <div className="stat-footer-metrics">
+            <span className="footer-metric-left">{leftStat}</span>
+            <span className="footer-metric-right">{rightStat}</span>
+          </div>
+        )}
       </div>
     </div>
   );

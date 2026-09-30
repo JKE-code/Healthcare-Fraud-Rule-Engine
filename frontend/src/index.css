@@ -3078,11 +3078,88 @@ code {
     flex-direction: column;
     gap: 12px;
   }
-  .secops-kpi-row, .audit-metrics-strip { grid-template-columns: 1fr; }
-  .rules-toolbar-card, .audit-filter-card {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  .rules-search-input, .audit-search-input { width: 100%; }
+/* ==========================================================================
+   ENHANCED MODERN FINTECH AESTHETICS & MICRO-ANIMATIONS
+   ========================================================================== */
+
+/* Enhanced glassmorphism navbar */
+.navbar-container {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04) !important;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+/* Polished Card Hover & Shadows */
+.secops-stat-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: 1px solid rgba(226, 232, 240, 0.85) !important;
+  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.05), 0 1px 4px -1px rgba(15, 23, 42, 0.02) !important;
+}
+
+.secops-stat-card:hover {
+  transform: translateY(-2px) scale(1.005) !important;
+  box-shadow: 0 12px 24px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03) !important;
+}
+
+.checkout-main-card, .verdict-inspector-column, .secops-table-card, .docked-details-card {
+  border-radius: 12px !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Action button gradients */
+.btn-process-transaction {
+  background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%) !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25) !important;
+  transition: all 0.2s ease !important;
+  letter-spacing: 0.02em !important;
+}
+
+.btn-process-transaction:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e293b 100%) !important;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35) !important;
+  transform: translateY(-1px) !important;
+}
+
+.btn-create-rule {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25) !important;
+  transition: all 0.2s ease !important;
+}
+
+.btn-create-rule:hover {
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Smooth table hover rows */
+.transaction-row {
+  transition: background-color 0.15s ease !important;
+}
+
+.transaction-row:hover {
+  background-color: rgba(241, 245, 249, 0.7) !important;
+}
+
+/* Custom scrollbar aesthetics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
