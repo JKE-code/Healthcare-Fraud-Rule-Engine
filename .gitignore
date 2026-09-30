@@ -49,6 +49,7 @@ Thumbs.db
 
 # Dataset files
 *.csv
+!dataset/*.csv
 ieee-fraud-detection/
 
 # Frontend

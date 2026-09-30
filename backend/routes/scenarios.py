@@ -147,27 +147,46 @@ async def stream_kaggle_transactions(req: KaggleStreamRequest, db: Session = Dep
     Streams real-world formatted transactions from the Kaggle Credit Card Fraud dataset
     (kartik2112/fraud-detection) into the rule evaluation pipeline with channel='KAGGLE_LIVE'.
     """
-    from scripts.ingest_kaggle import generate_benchmark_kaggle_feed, parse_kaggle_row
-
-    raw_records = generate_benchmark_kaggle_feed(count=req.count)
+    from backend.kaggle_streamer import get_next_kaggle_transaction, load_kaggle_dataset
+    csv_records = load_kaggle_dataset()
     processed = []
 
-    for idx, raw in enumerate(raw_records, start=1):
-        tx_data = parse_kaggle_row(raw, idx)
-        tx_req = TransactionRequest(
-            customer_id=tx_data["customer_id"],
-            amount=tx_data["amount"],
-            merchant=tx_data["merchant"],
-            location=tx_data["location"],
-            device=tx_data["device"],
-            payment_method=tx_data["payment_method"],
-            channel="KAGGLE_LIVE",
-            timestamp=tx_data["timestamp"],
-        )
-        res = await create_transaction(tx_req, db)
-        processed.append(res)
+    if csv_records:
+        for _ in range(req.count):
+            tx_data = get_next_kaggle_transaction()
+            if not tx_data:
+                break
+            tx_req = TransactionRequest(
+                customer_id=tx_data["customer_id"],
+                amount=tx_data["amount"],
+                merchant=tx_data["merchant"],
+                location=tx_data["location"],
+                device=tx_data["device"],
+                payment_method=tx_data["payment_method"],
+                channel="KAGGLE_LIVE",
+                timestamp=tx_data["timestamp"],
+            )
+            res = await create_transaction(tx_req, db)
+            processed.append(res)
+    else:
+        from scripts.ingest_kaggle import generate_benchmark_kaggle_feed, parse_kaggle_row
+        raw_records = generate_benchmark_kaggle_feed(count=req.count)
+        for idx, raw in enumerate(raw_records, start=1):
+            tx_data = parse_kaggle_row(raw, idx)
+            tx_req = TransactionRequest(
+                customer_id=tx_data["customer_id"],
+                amount=tx_data["amount"],
+                merchant=tx_data["merchant"],
+                location=tx_data["location"],
+                device=tx_data["device"],
+                payment_method=tx_data["payment_method"],
+                channel="KAGGLE_LIVE",
+                timestamp=tx_data["timestamp"],
+            )
+            res = await create_transaction(tx_req, db)
+            processed.append(res)
 
-    flagged_count = sum(1 for p in processed if p.is_flagged)
+    flagged_count = sum(1 for p in processed if (p.get("is_flagged") if isinstance(p, dict) else getattr(p, "is_flagged", False)))
 
     return {
         "status": "success",
