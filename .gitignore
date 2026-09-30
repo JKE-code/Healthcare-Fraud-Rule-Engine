@@ -19,6 +19,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+# Databases
+*.db
+*.sqlite
+*.sqlite3
 
 # Virtual Environments
 venv/
