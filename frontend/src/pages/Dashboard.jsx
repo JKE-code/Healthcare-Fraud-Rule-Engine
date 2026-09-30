@@ -6,7 +6,7 @@ import { FraudChart } from '../components/FraudChart';
 import { RiskChart } from '../components/RiskChart';
 import { ActivityChart } from '../components/ActivityChart';
 import { AlertToast } from '../components/AlertToast';
-import { WS_URL, fetchTransactions } from '../api';
+import { WS_URL, fetchTransactions, resetSimulatorData } from '../api';
 
 export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setWsStatus }) {
   const [transactions, setTransactions] = useState(sharedTransactions || []);
@@ -133,7 +133,42 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           </div>
         </div>
 
-        <div className="banner-right">
+        <div className="banner-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await resetSimulatorData();
+                const res = await fetchTransactions({ limit: 100 });
+                if (res && res.transactions) {
+                  setTransactions(res.transactions);
+                  const firstFlagged = res.transactions.find((t) => t.is_flagged || t.review_status === 'FLAGGED');
+                  setSelectedTx(firstFlagged || res.transactions[0]);
+                }
+              } catch (err) {
+                console.error('Reset error:', err);
+              }
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 700,
+              background: 'rgba(56, 189, 248, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+            }}
+            title="Reset database to realistic baseline (Normal Swiggy/Amazon cleared in green, only genuine attacks flagged)"
+          >
+            <span>🔄</span>
+            <span>Reset Demo Baseline</span>
+          </button>
+
           <div className="system-online-badge">
             <span className="online-emerald-dot" />
             <span className="online-label">RULE ENGINE ONLINE</span>

@@ -18,27 +18,54 @@ from backend.routes.rules import router as rules_router
 from backend.rules import engine
 from backend.services.aws_notifier import notifier
 from backend.websocket import manager
-from backend.mock_data import get_random_sample_transaction
+from backend.mock_data import get_random_sample_transaction, get_clean_seed_transactions
 
 logger = logging.getLogger(__name__)
 
+# Controlled background stream: Disabled by default so random transactions do not spam console
+is_live_stream_active = False
 
-# Background worker to generate live dummy transactions for real-time reviewer console demonstration
+
 async def dummy_transaction_worker():
-    # Wait 3 seconds before starting simulator to let server spin up cleanly
-    await asyncio.sleep(3)
     while True:
         try:
-            sample_data = get_random_sample_transaction()
-            req = TransactionRequest(**sample_data)
-            db = SessionLocal()
-            try:
-                await create_transaction(req, db)
-            finally:
-                db.close()
+            if is_live_stream_active:
+                sample_data = get_random_sample_transaction()
+                req = TransactionRequest(**sample_data)
+                db = SessionLocal()
+                try:
+                    await create_transaction(req, db)
+                finally:
+                    db.close()
         except Exception as e:
             logger.debug(f"Background simulator step: {e}")
-        await asyncio.sleep(4)
+        await asyncio.sleep(6)
+
+
+async def seed_initial_database(db):
+    """Populates realistic initial dataset."""
+    from backend.db.models import TransactionDB
+    seeds = get_clean_seed_transactions()
+    for item in seeds:
+        force_status = item.pop("force_status", None)
+        reviewed_by = item.pop("reviewed_by", None)
+        reviewer_notes = item.pop("reviewer_notes", None)
+        req = TransactionRequest(**item)
+        res = await create_transaction(req, db)
+        tx_id = res.get("transaction_id") if isinstance(res, dict) else getattr(res, "transaction_id", None)
+        if force_status and tx_id:
+            tx = db.query(TransactionDB).filter(TransactionDB.transaction_id == tx_id).first()
+            if tx:
+                tx.review_status = force_status
+                if force_status == "CLEARED":
+                    tx.is_flagged = False
+                elif force_status == "REVIEWED":
+                    tx.is_flagged = True
+                if reviewed_by:
+                    tx.reviewed_by = reviewed_by
+                if reviewer_notes:
+                    tx.reviewer_notes = reviewer_notes
+                db.commit()
 
 
 @asynccontextmanager
@@ -47,16 +74,12 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Acentra Fraud Engine Database & Rules Initialized.")
 
-    # Seed 3 initial transactions if database is fresh
     db = SessionLocal()
     try:
         from backend.db.models import TransactionDB
         count = db.query(TransactionDB).count()
         if count == 0:
-            for _ in range(3):
-                sample = get_random_sample_transaction()
-                req = TransactionRequest(**sample)
-                await create_transaction(req, db)
+            await seed_initial_database(db)
     except Exception as e:
         logger.warning(f"Initial seed warning: {e}")
     finally:
@@ -103,7 +126,37 @@ async def health_check():
         "rules_registered": len(engine.get_rules()),
         "rules": [r["rule_code"] for r in engine.get_rules()],
         "aws_notifier_mode": "live" if notifier.has_credentials else "sandbox_mock",
+        "live_stream_active": is_live_stream_active,
     }
+
+
+@app.post("/api/simulator/toggle", tags=["simulator"])
+async def toggle_simulator():
+    """Toggle automated simulated background transactions on/off."""
+    global is_live_stream_active
+    is_live_stream_active = not is_live_stream_active
+    return {"status": "ok", "live_stream_active": is_live_stream_active}
+
+
+@app.get("/api/simulator/status", tags=["simulator"])
+async def get_simulator_status():
+    return {"live_stream_active": is_live_stream_active}
+
+
+@app.post("/api/simulator/reset", tags=["simulator"])
+async def reset_simulator_data():
+    """Wipes the database and re-seeds clean, realistic baseline data."""
+    db = SessionLocal()
+    try:
+        from backend.db.models import TransactionDB, FraudFlagDB, ReviewAuditLogDB
+        db.query(FraudFlagDB).delete()
+        db.query(ReviewAuditLogDB).delete()
+        db.query(TransactionDB).delete()
+        db.commit()
+        await seed_initial_database(db)
+        return {"status": "ok", "message": "Database successfully reset and re-seeded with realistic baseline."}
+    finally:
+        db.close()
 
 
 # WebSocket Endpoint for live push to Reviewer Console

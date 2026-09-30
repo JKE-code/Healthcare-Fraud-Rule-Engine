@@ -44,4 +44,20 @@ export async function submitTransaction(payload) {
   return res.json();
 }
 
+export async function resetSimulatorData() {
+  const res = await fetch(`${API_URL}/api/simulator/reset`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to reset simulator database");
+  return res.json();
+}
+
+export async function toggleSimulator() {
+  const res = await fetch(`${API_URL}/api/simulator/toggle`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to toggle simulator stream");
+  return res.json();
+}
+
 export { API_URL, WS_URL };
