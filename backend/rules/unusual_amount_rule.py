@@ -15,6 +15,21 @@ class UnusualAmountRule(BaseRule):
         self.baseline_multiplier = baseline_multiplier
         self.default_baseline = default_baseline
 
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "hard_threshold": self.hard_threshold,
+            "baseline_multiplier": self.baseline_multiplier,
+            "default_baseline": self.default_baseline,
+        }
+
+    def update_parameters(self, params: Dict[str, Any]) -> None:
+        if "hard_threshold" in params:
+            self.hard_threshold = float(params["hard_threshold"])
+        if "baseline_multiplier" in params:
+            self.baseline_multiplier = float(params["baseline_multiplier"])
+        if "default_baseline" in params:
+            self.default_baseline = float(params["default_baseline"])
+
     def evaluate(self, transaction: Dict[str, Any], history: List[Dict[str, Any]]) -> RuleResult:
         try:
             amount = float(transaction.get("amount", 0.0))

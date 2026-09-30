@@ -41,7 +41,7 @@ def generate_transaction_id() -> str:
 @router.post("", response_model=TransactionResponse)
 async def create_transaction(request: TransactionRequest, db: Session = Depends(get_db)):
     tx_id = generate_transaction_id()
-    now_iso = request.timestamp or datetime.now(timezone.utc).isoformat()
+    now_iso = (request.timestamp or datetime.now(timezone.utc).isoformat()).replace("+00:00", "Z")
     timing_val = request.timing or ""
     cust_id = request.customer_id or "CUST-1001"
     channel = request.channel or "UPI"
@@ -268,3 +268,51 @@ async def review_transaction(
         logger.warning(f"WebSocket broadcast failed: {e}")
 
     return result_dict
+
+
+@router.get("/{transaction_id}/dossier")
+async def get_forensic_dossier(transaction_id: str, db: Session = Depends(get_db)):
+    """
+    Compliance Forensic Dossier Endpoint:
+    Generates a structured FinTech audit dossier combining transaction data,
+    rule flags with metrics, AWS notification proof, and complete reviewer audit logs.
+    """
+    tx = db.query(TransactionDB).filter(TransactionDB.transaction_id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    flags = db.query(FraudFlagDB).filter(FraudFlagDB.transaction_id == transaction_id).all()
+    logs = db.query(ReviewAuditLogDB).filter(ReviewAuditLogDB.transaction_id == transaction_id).all()
+
+    return {
+        "dossier_id": f"DOSSIER-{tx.transaction_id}",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "compliance_mandate": "Acentra Hiring Hackathon - Fraud Rule Engine Standards v1.0",
+        "transaction": {
+            "transaction_id": tx.transaction_id,
+            "timestamp": tx.timestamp,
+            "customer_id": tx.customer_id,
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "merchant": tx.merchant,
+            "location": tx.location,
+            "device": tx.device,
+            "payment_method": tx.payment_method,
+            "channel": tx.channel,
+        },
+        "evaluation_summary": {
+            "risk_score": round(tx.risk_score, 3),
+            "risk_level": tx.risk_level,
+            "decision": tx.decision,
+            "review_status": tx.review_status,
+            "is_flagged": tx.is_flagged,
+        },
+        "triggered_rule_flags": [f.to_dict() for f in flags],
+        "aws_alert_notification": {
+            "alert_sent": tx.aws_alert_sent,
+            "message_id": tx.aws_message_id,
+            "channel": "AWS SES (Email) & AWS SNS (Topic)",
+        },
+        "reviewer_audit_trail": [l.to_dict() for l in logs],
+    }
+

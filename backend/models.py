@@ -93,6 +93,31 @@ class RuleInfoResponse(BaseModel):
     description: str
     weight: float
     enabled: bool
+    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class RuleUpdateRequest(BaseModel):
+    enabled: Optional[bool] = None
+    weight: Optional[float] = None
+    parameters: Optional[Dict[str, Any]] = None
+
+
+class RuleAnalyticsResponse(BaseModel):
+    rule_code: str
+    rule_name: str
+    enabled: bool
+    weight: float
+    total_triggers: int
+    reviewed_count: int
+    cleared_count: int
+    pending_count: int
+    false_positive_rate: str
+    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class AuditLogListResponse(BaseModel):
+    logs: List[ReviewAuditLogResponse]
+    total: int
 
 
 class DashboardStatsResponse(BaseModel):
@@ -104,3 +129,4 @@ class DashboardStatsResponse(BaseModel):
     avg_risk_score: float
     risk_distribution: Dict[str, int]
     review_distribution: Dict[str, int]
+

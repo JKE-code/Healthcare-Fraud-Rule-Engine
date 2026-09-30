@@ -15,6 +15,9 @@ from backend.models import TransactionRequest
 from backend.routes.transactions import router as transactions_router, create_transaction
 from backend.routes.dashboard import router as dashboard_router
 from backend.routes.rules import router as rules_router
+from backend.routes.audit import router as audit_router
+from backend.routes.scenarios import router as scenarios_router
+from backend.routes.alerts import router as alerts_router
 from backend.rules import engine
 from backend.services.aws_notifier import notifier
 from backend.websocket import manager
@@ -93,6 +96,9 @@ app.add_middleware(
 app.include_router(transactions_router)
 app.include_router(dashboard_router)
 app.include_router(rules_router)
+app.include_router(audit_router)
+app.include_router(scenarios_router)
+app.include_router(alerts_router)
 
 
 @app.get("/api/health", tags=["health"])

@@ -44,4 +44,71 @@ export async function submitTransaction(payload) {
   return res.json();
 }
 
+export async function fetchAuditLogs(transactionId = null) {
+  const url = transactionId
+    ? `${API_URL}/api/audit-logs?transaction_id=${transactionId}`
+    : `${API_URL}/api/audit-logs`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch audit logs");
+  return res.json();
+}
+
+export async function triggerScenario(scenarioType, customerId = "CUST-DEMO") {
+  const res = await fetch(`${API_URL}/api/scenarios/trigger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario_type: scenarioType, customer_id: customerId }),
+  });
+  if (!res.ok) throw new Error(`Failed to trigger scenario: ${res.statusText}`);
+  return res.json();
+}
+
+export async function streamKaggle(count = 5) {
+  const res = await fetch(`${API_URL}/api/scenarios/stream-kaggle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ count }),
+  });
+  if (!res.ok) throw new Error(`Failed to stream Kaggle transactions: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateRuleConfig(ruleCode, payload) {
+  const res = await fetch(`${API_URL}/api/rules/${ruleCode}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to update rule configuration: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchRuleAnalytics() {
+  const res = await fetch(`${API_URL}/api/rules/analytics`);
+  if (!res.ok) throw new Error("Failed to fetch rule analytics");
+  return res.json();
+}
+
+export async function fetchAlertStatus() {
+  const res = await fetch(`${API_URL}/api/alerts/status`);
+  if (!res.ok) throw new Error("Failed to fetch alert service status");
+  return res.json();
+}
+
+export async function testAlertDispatch(payload = {}) {
+  const res = await fetch(`${API_URL}/api/alerts/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to test alert dispatch: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchTransactionDossier(transactionId) {
+  const res = await fetch(`${API_URL}/api/transactions/${transactionId}/dossier`);
+  if (!res.ok) throw new Error(`Failed to fetch incident dossier: ${res.statusText}`);
+  return res.json();
+}
+
 export { API_URL, WS_URL };

@@ -38,3 +38,12 @@ class BaseRule(ABC):
             RuleResult indicating whether the rule triggered, risk score, and reason.
         """
         pass
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Returns configurable rule parameters."""
+        return {}
+
+    def update_parameters(self, params: Dict[str, Any]) -> None:
+        """Dynamically updates rule parameters at runtime."""
+        pass
+

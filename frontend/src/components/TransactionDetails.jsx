@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { reviewTransaction } from '../api';
+import { reviewTransaction, fetchTransactionDossier, testAlertDispatch } from '../api';
 
 export function TransactionDetails({
   tx,
@@ -106,31 +106,59 @@ export function TransactionDetails({
       </div>
 
       <div className="details-card-body">
-        {/* AWS SES/SNS Alert Banner if triggered */}
-        {tx.aws_alert_sent && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 12px',
-              borderRadius: '6px',
-              marginBottom: '12px',
-              background: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#fca5a5',
-              fontSize: '11px',
-            }}
-          >
-            <span style={{ fontSize: '14px' }}>🚨</span>
+        {/* AWS SES/SNS Alert Banner */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            marginBottom: '12px',
+            background: tx.aws_alert_sent ? 'rgba(239, 68, 68, 0.15)' : 'rgba(30, 41, 59, 0.5)',
+            border: tx.aws_alert_sent ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #334155',
+            color: tx.aws_alert_sent ? '#fca5a5' : '#94a3b8',
+            fontSize: '11px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>{tx.aws_alert_sent ? '🚨' : '☁️'}</span>
             <div>
-              <strong>AWS SES & SNS Alert Dispatched:</strong> High-risk security threshold crossed.
+              <strong>{tx.aws_alert_sent ? 'AWS SES & SNS Alert Dispatched' : 'AWS SES & SNS Alert Pipeline'}</strong>
               <div style={{ fontSize: '10px', color: '#cbd5e1' }}>
-                Ref ID: <code>{tx.aws_message_id || 'AWS-DELIVERY-OK'}</code>
+                Ref ID: <code>{tx.aws_message_id || 'AWS-ZERO-COST-SANDBOX'}</code>
               </div>
             </div>
           </div>
-        )}
+          <button
+            onClick={async () => {
+              try {
+                const res = await testAlertDispatch({
+                  amount: tx.amount,
+                  risk_score: tx.risk_score || 0.85,
+                  rule_code: tx.flags?.[0]?.rule_code || 'RULE_IMPOSSIBLE_LOCATION',
+                });
+                alert(`[AWS Alert Verified]\nMode: ${res.receipt?.mode}\nDelivery ID: ${res.receipt?.message_id}\nSES Email: ${res.receipt?.recipient_email}\nSNS Topic: ${res.receipt?.topic_arn}`);
+              } catch (e) {
+                alert(`AWS Alert test failed: ${e.message}`);
+              }
+            }}
+            style={{
+              padding: '3px 8px',
+              fontSize: '10px',
+              fontWeight: 700,
+              background: '#1e293b',
+              border: '1px solid #475569',
+              borderRadius: '4px',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ⚡ Test AWS Alert
+          </button>
+        </div>
 
         {/* Top Flagged Amount Hero Box */}
         <div className="flagged-amount-box">
@@ -317,30 +345,35 @@ export function TransactionDetails({
         {/* 1-Click Export Forensic Dossier */}
         <button
           type="button"
-          onClick={() => {
-            const dossier = {
-              incident_id: `INC-${tx.transaction_id}`,
-              timestamp: tx.timestamp || new Date().toISOString(),
-              target: {
-                amount: `INR ${tx.amount}`,
-                merchant: tx.merchant,
-                location: tx.location,
-                device: tx.device,
-                customer_id: tx.customer_id
-              },
-              rule_engine_verdict: {
-                review_status: tx.review_status,
-                risk_score: tx.risk_score,
-                risk_level: tx.risk_level,
-                triggered_flags: tx.flags || [],
-                explanations: tx.explanation || []
-              },
-              aws_notification: {
-                alert_dispatched: tx.aws_alert_sent,
-                message_id: tx.aws_message_id
-              },
-              compliance_standard: "Acentra Hiring Hackathon - Fraud Rule Engine Mandate v1.0"
-            };
+          onClick={async () => {
+            let dossier;
+            try {
+              dossier = await fetchTransactionDossier(tx.transaction_id);
+            } catch (e) {
+              dossier = {
+                incident_id: `INC-${tx.transaction_id}`,
+                timestamp: tx.timestamp || new Date().toISOString(),
+                target: {
+                  amount: `INR ${tx.amount}`,
+                  merchant: tx.merchant,
+                  location: tx.location,
+                  device: tx.device,
+                  customer_id: tx.customer_id
+                },
+                rule_engine_verdict: {
+                  review_status: tx.review_status,
+                  risk_score: tx.risk_score,
+                  risk_level: tx.risk_level,
+                  triggered_flags: tx.flags || [],
+                  explanations: tx.explanation || []
+                },
+                aws_notification: {
+                  alert_dispatched: tx.aws_alert_sent,
+                  message_id: tx.aws_message_id
+                },
+                compliance_standard: "Acentra Hiring Hackathon - Fraud Rule Engine Mandate v1.0"
+              };
+            }
             const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

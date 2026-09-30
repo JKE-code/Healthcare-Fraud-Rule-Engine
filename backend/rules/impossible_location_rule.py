@@ -70,6 +70,18 @@ class ImpossibleLocationRule(BaseRule):
         self.max_feasible_speed_kmh = max_feasible_speed_kmh
         self.min_elapsed_seconds = min_elapsed_seconds
 
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "max_feasible_speed_kmh": self.max_feasible_speed_kmh,
+            "min_elapsed_seconds": self.min_elapsed_seconds,
+        }
+
+    def update_parameters(self, params: Dict[str, Any]) -> None:
+        if "max_feasible_speed_kmh" in params:
+            self.max_feasible_speed_kmh = float(params["max_feasible_speed_kmh"])
+        if "min_elapsed_seconds" in params:
+            self.min_elapsed_seconds = float(params["min_elapsed_seconds"])
+
     def evaluate(self, transaction: Dict[str, Any], history: List[Dict[str, Any]]) -> RuleResult:
         current_loc = str(transaction.get("location", "")).strip()
         current_coords = get_city_coords(current_loc)

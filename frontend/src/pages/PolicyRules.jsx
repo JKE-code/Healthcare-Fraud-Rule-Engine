@@ -1,80 +1,145 @@
 import React, { useState, useEffect } from 'react';
-import { fetchRules } from '../api';
+import { fetchRules, updateRuleConfig } from '../api';
 
-const INITIAL_RULES = [
-  {
-    id: 'RULE_VELOCITY',
-    name: 'Transaction Velocity Surge (Sliding Window)',
+const DEFAULT_METADATA = {
+  RULE_VELOCITY: {
     category: 'Velocity & Volume',
-    description: 'Intercepts anomalous transaction bursts exceeding 3 authorization requests within a 60-second rolling sliding window.',
-    condition: 'count(transactions, window=60s) >= 3',
     action: 'AUTONOMOUS BLOCK / STEP-UP',
     actionType: 'challenge',
-    enabled: true,
+    condition: 'count(transactions, window=window_seconds) >= max_transactions',
     triggeredToday: 42,
     falsePositiveRate: '0.3%',
-    confidence: '99.4%'
+    confidence: '99.4%',
   },
-  {
-    id: 'RULE_UNUSUAL_AMOUNT',
-    name: 'Unusual Transaction Amount Outlier',
+  RULE_UNUSUAL_AMOUNT: {
     category: 'Velocity & Volume',
-    description: 'Detects single transactions exceeding hard limits (₹50,000) or > 3.5x historical customer average spending baseline.',
-    condition: 'amount >= 50000 || amount > (baseline_avg * 3.5)',
     action: 'AUTONOMOUS BLOCK',
     actionType: 'block',
-    enabled: true,
+    condition: 'amount >= hard_limit || amount > (baseline_avg * multiplier)',
     triggeredToday: 19,
     falsePositiveRate: '0.2%',
-    confidence: '99.8%'
+    confidence: '99.8%',
   },
-  {
-    id: 'RULE_IMPOSSIBLE_LOCATION',
-    name: 'Impossible Geographical Location & Travel Speed',
+  RULE_IMPOSSIBLE_LOCATION: {
     category: 'Geolocation & IP',
-    description: 'Calculates Haversine physical distance and elapsed travel time between sequential transactions. Flags required velocity > 850 km/h.',
-    condition: 'distance_km > 50 && speed_kmh > 850',
     action: 'AUTONOMOUS BLOCK',
     actionType: 'block',
-    enabled: true,
+    condition: 'distance_km > min_distance_km && speed_kmh > max_speed_kmh',
     triggeredToday: 14,
     falsePositiveRate: '0.1%',
-    confidence: '99.9%'
+    confidence: '99.9%',
   },
-  {
-    id: 'RULE_NEW_DEVICE',
-    name: 'Unrecognized Hardware Device on High Value',
+  RULE_NEW_DEVICE: {
     category: 'Device & Identity',
-    description: 'Extensible Rule demonstration: Intercepts high-value charges (> ₹15,000) originating from an unverified or new device fingerprint.',
-    condition: "device == 'new_device' && amount > 15000",
     action: 'MANUAL REVIEW',
     actionType: 'review',
-    enabled: true,
+    condition: "device == 'new_device' && amount > high_value_threshold",
     triggeredToday: 26,
     falsePositiveRate: '1.4%',
-    confidence: '95.2%'
-  }
-];
+    confidence: '95.2%',
+  },
+};
 
 export function PolicyRules() {
-  const [rules, setRules] = useState(INITIAL_RULES);
+  const [rules, setRules] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState(null);
+  const [savingRuleId, setSavingRuleId] = useState(null);
 
-  const categories = ['All', 'Velocity & Volume', 'Geolocation & IP', 'Device & Identity', 'Machine Learning', 'Merchant & Gateway'];
+  const categories = ['All', 'Velocity & Volume', 'Geolocation & IP', 'Device & Identity'];
 
-  const toggleRule = (id) => {
+  useEffect(() => {
+    loadLiveRules();
+  }, []);
+
+  const loadLiveRules = async () => {
+    try {
+      const data = await fetchRules();
+      const mapped = data.map((r) => {
+        const meta = DEFAULT_METADATA[r.rule_code] || {
+          category: 'Custom Rules',
+          action: 'MANUAL REVIEW',
+          actionType: 'review',
+          condition: 'custom evaluation expression',
+          triggeredToday: 5,
+          falsePositiveRate: '0.5%',
+          confidence: '98.0%',
+        };
+        return {
+          id: r.rule_code,
+          name: r.name,
+          category: meta.category,
+          description: r.description,
+          condition: meta.condition,
+          action: meta.action,
+          actionType: meta.actionType,
+          enabled: r.enabled,
+          weight: r.weight,
+          parameters: { ...(r.parameters || {}) },
+          triggeredToday: meta.triggeredToday,
+          falsePositiveRate: meta.falsePositiveRate,
+          confidence: meta.confidence,
+        };
+      });
+      setRules(mapped);
+    } catch (err) {
+      console.warn('Failed to fetch backend rules, keeping initial config:', err);
+    }
+  };
+
+  const handleParamChange = (ruleId, paramKey, value) => {
     setRules((prev) =>
       prev.map((r) => {
-        if (r.id === id) {
-          const newState = !r.enabled;
-          showToast(`Rule ${r.id} ${newState ? 'Enabled' : 'Disabled'}`);
-          return { ...r, enabled: newState };
+        if (r.id === ruleId) {
+          return {
+            ...r,
+            parameters: {
+              ...r.parameters,
+              [paramKey]: Number(value),
+            },
+          };
         }
         return r;
       })
     );
+  };
+
+  const saveRuleConfig = async (rule) => {
+    setSavingRuleId(rule.id);
+    try {
+      await updateRuleConfig(rule.id, {
+        enabled: rule.enabled,
+        weight: rule.weight,
+        parameters: rule.parameters,
+      });
+      showToast(`Rule ${rule.id} configuration updated in live engine!`);
+    } catch (err) {
+      showToast(`Failed to update ${rule.id}: ${err.message}`);
+    } finally {
+      setSavingRuleId(null);
+    }
+  };
+
+  const toggleRule = async (id) => {
+    const target = rules.find((r) => r.id === id);
+    if (!target) return;
+    const newState = !target.enabled;
+
+    setRules((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, enabled: newState } : r))
+    );
+
+    try {
+      await updateRuleConfig(id, {
+        enabled: newState,
+        weight: target.weight,
+        parameters: target.parameters,
+      });
+      showToast(`Rule ${id} ${newState ? 'Enabled' : 'Disabled'} in Rule Engine`);
+    } catch (err) {
+      showToast(`Failed to toggle ${id}: ${err.message}`);
+    }
   };
 
   const showToast = (msg) => {
@@ -351,6 +416,64 @@ export function PolicyRules() {
               </div>
               <code className="logic-code-text">{rule.condition}</code>
             </div>
+
+            {/* Dynamic Heuristic Parameter Tuning Controls */}
+            {rule.parameters && Object.keys(rule.parameters).length > 0 && (
+              <div style={{
+                background: '#090d16',
+                border: '1px solid #1e293b',
+                borderRadius: '8px',
+                padding: '12px',
+                margin: '12px 0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.05em' }}>
+                    DYNAMIC THRESHOLD TUNING (HOT-RELOAD)
+                  </span>
+                  <button
+                    onClick={() => saveRuleConfig(rule)}
+                    disabled={savingRuleId === rule.id}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      background: savingRuleId === rule.id ? '#475569' : '#2563eb',
+                      color: '#fff',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {savingRuleId === rule.id ? 'Applying...' : 'Apply Live'}
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                  {Object.entries(rule.parameters).map(([key, val]) => (
+                    <div key={key}>
+                      <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>
+                        {key.replace(/_/g, ' ')}
+                      </label>
+                      <input
+                        type="number"
+                        step={key.includes('multiplier') ? '0.1' : (key.includes('limit') || key.includes('threshold') ? '500' : '1')}
+                        value={val}
+                        onChange={(e) => handleParamChange(rule.id, key, e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          borderRadius: '4px',
+                          background: '#0f172a',
+                          border: '1px solid #334155',
+                          color: '#38bdf8',
+                          fontWeight: 600,
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Footer Stats & Action Badge */}
             <div className="rule-card-footer">

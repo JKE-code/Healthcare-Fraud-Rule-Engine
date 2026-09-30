@@ -124,9 +124,12 @@ and mark the transaction as REVIEWED or CLEARED.
 
         message_id = None
         mode = "sandbox_simulated"
+        ses_sent = False
+        sns_topic_sent = False
+        sns_sms_sent = False
 
-        # Attempt live AWS SES dispatch if configured
-        if self._ses_client:
+        # 1. Attempt live AWS SES Email dispatch if configured
+        if self._ses_client and AWS_SES_RECIPIENT:
             try:
                 ses_response = self._ses_client.send_email(
                     Source=AWS_SES_SENDER,
@@ -140,33 +143,51 @@ and mark the transaction as REVIEWED or CLEARED.
                     },
                 )
                 message_id = ses_response.get("MessageId")
+                ses_sent = True
                 mode = "live_aws_ses"
-                logger.info(f"AWS SES alert successfully sent: {message_id}")
+                logger.info(f"AWS SES email alert successfully sent: {message_id}")
             except (ClientError, BotoCoreError) as e:
                 logger.warning(f"AWS SES live call failed, reverting to sandbox receipt: {e}")
 
-        # Attempt live AWS SNS dispatch if configured
-        if self._sns_client and AWS_SNS_TOPIC_ARN:
-            try:
-                sns_payload = {
-                    "event": "HIGH_RISK_FRAUD_ALERT",
-                    "transaction_id": tx_id,
-                    "customer_id": customer_id,
-                    "amount": amount,
-                    "risk_score": risk_score,
-                    "risk_level": risk_level,
-                    "flags": [f.get("rule_code") for f in triggered_flags],
-                }
-                self._sns_client.publish(
-                    TopicArn=AWS_SNS_TOPIC_ARN,
-                    Message=json.dumps(sns_payload),
-                    Subject=f"Fraud Alert: {tx_id}",
-                )
-                if not message_id:
-                    message_id = f"sns-{uuid.uuid4().hex[:12]}"
-                mode = "live_aws_ses_and_sns" if mode == "live_aws_ses" else "live_aws_sns"
-            except (ClientError, BotoCoreError) as e:
-                logger.warning(f"AWS SNS live call failed: {e}")
+        # 2. Attempt live AWS SNS Topic dispatch if configured
+        sns_phone_number = os.getenv("AWS_SNS_PHONE_NUMBER")
+        if self._sns_client:
+            if AWS_SNS_TOPIC_ARN:
+                try:
+                    sns_payload = {
+                        "event": "HIGH_RISK_FRAUD_ALERT",
+                        "transaction_id": tx_id,
+                        "customer_id": customer_id,
+                        "amount": amount,
+                        "risk_score": risk_score,
+                        "risk_level": risk_level,
+                        "flags": [f.get("rule_code") for f in triggered_flags],
+                    }
+                    self._sns_client.publish(
+                        TopicArn=AWS_SNS_TOPIC_ARN,
+                        Message=json.dumps(sns_payload, indent=2),
+                        Subject=f"Fraud Alert: {tx_id}",
+                    )
+                    sns_topic_sent = True
+                    if not message_id:
+                        message_id = f"sns-topic-{uuid.uuid4().hex[:10]}"
+                    mode = "live_aws_ses_and_sns" if ses_sent else "live_aws_sns"
+                    logger.info(f"AWS SNS topic alert published to {AWS_SNS_TOPIC_ARN}")
+                except (ClientError, BotoCoreError) as e:
+                    logger.warning(f"AWS SNS Topic publish failed: {e}")
+
+            # 3. Optional direct SMS alert via AWS SNS if phone number configured
+            if sns_phone_number:
+                try:
+                    sms_text = f"[ACENTRA ALERT] High Risk {risk_level} detected on TX {tx_id} (INR {amount:,.0f}). Analyst action required."
+                    self._sns_client.publish(
+                        PhoneNumber=sns_phone_number,
+                        Message=sms_text,
+                    )
+                    sns_sms_sent = True
+                    logger.info(f"AWS SNS direct SMS sent to {sns_phone_number}")
+                except (ClientError, BotoCoreError) as e:
+                    logger.warning(f"AWS SNS SMS dispatch failed: {e}")
 
         # If running in sandbox mode (default when offline or no AWS keys)
         if not message_id:
@@ -182,9 +203,28 @@ and mark the transaction as REVIEWED or CLEARED.
             "delivered": True,
             "mode": mode,
             "message_id": message_id,
-            "recipient": AWS_SES_RECIPIENT,
-            "topic": AWS_SNS_TOPIC_ARN,
+            "ses_delivered": ses_sent or mode == "sandbox_mock",
+            "sns_topic_delivered": sns_topic_sent or mode == "sandbox_mock",
+            "sns_sms_delivered": sns_sms_sent,
+            "recipient_email": AWS_SES_RECIPIENT,
+            "topic_arn": AWS_SNS_TOPIC_ARN,
             "risk_score": risk_score,
+            "risk_level": risk_level,
+        }
+
+    def get_service_status(self) -> Dict[str, Any]:
+        """Inspects current AWS credentials, endpoints, and operating mode."""
+        return {
+            "mode": "live" if self.has_credentials else "sandbox_mock",
+            "has_credentials": self.has_credentials,
+            "region": self.region,
+            "ses_configured": bool(self._ses_client),
+            "sns_configured": bool(self._sns_client),
+            "ses_sender": AWS_SES_SENDER,
+            "ses_recipient": AWS_SES_RECIPIENT,
+            "sns_topic_arn": AWS_SNS_TOPIC_ARN,
+            "sns_phone_number": os.getenv("AWS_SNS_PHONE_NUMBER") or None,
+            "alert_threshold": HIGH_RISK_THRESHOLD,
         }
 
 

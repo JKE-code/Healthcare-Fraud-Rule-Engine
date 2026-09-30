@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchAuditLogs } from '../api';
 
 const INITIAL_LOGS = [
   {
@@ -129,11 +130,38 @@ const INITIAL_LOGS = [
 ];
 
 export function AuditLogs() {
-  const [logs] = useState(INITIAL_LOGS);
+  const [logs, setLogs] = useState(INITIAL_LOGS);
   const [searchQuery, setSearchQuery] = useState('');
   const [decisionFilter, setDecisionFilter] = useState('ALL');
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  // Fetch real reviewer audit trail from SQLite
+  useEffect(() => {
+    fetchAuditLogs()
+      .then((res) => {
+        if (res && res.logs && res.logs.length > 0) {
+          const liveLogs = res.logs.map((l) => ({
+            id: `AUDIT-${l.id}`,
+            timestamp: l.timestamp ? l.timestamp.replace('T', ' ').slice(0, 19) + ' UTC' : 'RECENT',
+            txId: l.transaction_id,
+            decision: l.new_status === 'CLEARED' ? 'PASS_200' : 'REVIEW_HOLD',
+            eventType: l.action,
+            merchant: 'Analyst Triage Decision',
+            amount: 0,
+            actor: l.reviewer || 'Fraud Analyst',
+            reason: l.notes || `Reviewer updated transaction status from ${l.previous_status} to ${l.new_status}`,
+            riskScore: l.new_status === 'CLEARED' ? 0.05 : 0.85,
+            ip: 'SecOps Console',
+            payload: l,
+          }));
+          setLogs([...liveLogs, ...INITIAL_LOGS]);
+        }
+      })
+      .catch((err) => {
+        console.warn('Audit logs fetch warning:', err);
+      });
+  }, []);
 
   const toggleExpand = (id) => {
     setExpandedLogId((prev) => (prev === id ? null : id));

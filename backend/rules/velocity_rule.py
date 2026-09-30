@@ -30,6 +30,18 @@ class VelocityRule(BaseRule):
         self.window_seconds = window_seconds
         self.max_transactions = max_transactions
 
+    def get_parameters(self) -> Dict[str, Any]:
+        return {
+            "window_seconds": self.window_seconds,
+            "max_transactions": self.max_transactions,
+        }
+
+    def update_parameters(self, params: Dict[str, Any]) -> None:
+        if "window_seconds" in params:
+            self.window_seconds = int(params["window_seconds"])
+        if "max_transactions" in params:
+            self.max_transactions = int(params["max_transactions"])
+
     def evaluate(self, transaction: Dict[str, Any], history: List[Dict[str, Any]]) -> RuleResult:
         current_time = parse_timestamp(transaction.get("timestamp"))
         customer_id = transaction.get("customer_id")

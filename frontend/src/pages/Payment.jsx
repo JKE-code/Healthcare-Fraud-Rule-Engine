@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { API_URL } from '../api';
+import { API_URL, streamKaggle } from '../api';
 import { mockAnalyzeTransaction } from '../data/mockTransactions';
 
 export function Payment({ onTransactionCreated, onNavigate }) {
@@ -79,6 +79,23 @@ export function Payment({ onTransactionCreated, onNavigate }) {
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isStreamingKaggle, setIsStreamingKaggle] = useState(false);
+
+  const handleStreamKaggle = async () => {
+    setIsStreamingKaggle(true);
+    try {
+      const res = await streamKaggle(10);
+      alert(`Successfully streamed ${res.total_streamed} Kaggle Credit Card transactions into Rule Engine!\nTriggered Flags: ${res.total_flagged} flagged for Reviewer triage.`);
+      if (onTransactionCreated && res.transactions?.[0]) {
+        onTransactionCreated(res.transactions[0]);
+      }
+    } catch (err) {
+      alert(`Kaggle streaming failed: ${err.message}`);
+    } finally {
+      setIsStreamingKaggle(false);
+    }
+  };
+
   const [verdict, setVerdict] = useState({
     status: 'BLOCKED',
     decision: 'REJECT 403',
@@ -255,6 +272,51 @@ export function Payment({ onTransactionCreated, onNavigate }) {
             <p className="checkout-subline">
               Enter any custom transaction details below to test the machine learning fraud detection model in real-time.
             </p>
+
+            {/* Kaggle Real-World Dataset Streamer */}
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8' }}>
+                    Kaggle Credit Card Real-World Dataset
+                  </span>
+                  <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 600 }}>
+                    kartik2112/fraud-detection
+                  </span>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                  Injects authentic cardholder GPS, velocity, and amounts directly into the Rule Engine & Console.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleStreamKaggle}
+                disabled={isStreamingKaggle}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  background: isStreamingKaggle ? '#475569' : '#0284c7',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: isStreamingKaggle ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {isStreamingKaggle ? 'Streaming...' : '⚡ Stream 10 Kaggle TXs'}
+              </button>
+            </div>
 
             {/* Quick Presets */}
             <div className="scenarios-section">

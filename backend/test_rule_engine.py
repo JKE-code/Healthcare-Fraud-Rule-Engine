@@ -175,3 +175,80 @@ def test_end_to_end_api_and_reviewer_workflow():
     assert clear_res.status_code == 200
     cleared_data = clear_res.json()
     assert cleared_data["review_status"] == "CLEARED"
+
+
+def test_dynamic_rule_tuning():
+    """Verify that reviewers can adjust rule thresholds at runtime via API."""
+    # Tune UnusualAmountRule hard_threshold to 35000
+    patch_res = client.patch(
+        "/api/rules/RULE_UNUSUAL_AMOUNT",
+        json={"parameters": {"hard_threshold": 35000.0}},
+    )
+    assert patch_res.status_code == 200
+    data = patch_res.json()
+    assert data["parameters"]["hard_threshold"] == 35000.0
+
+    # Reset back to 50000.0
+    client.patch(
+        "/api/rules/RULE_UNUSUAL_AMOUNT",
+        json={"parameters": {"hard_threshold": 50000.0}},
+    )
+
+
+def test_rule_analytics_endpoint():
+    """Verify that rule trigger analytics and false-positive rates are returned."""
+    res = client.get("/api/rules/analytics")
+    assert res.status_code == 200
+    analytics = res.json()
+    assert len(analytics) >= 3
+    rule_codes = [a["rule_code"] for a in analytics]
+    assert "RULE_VELOCITY" in rule_codes
+    assert "RULE_UNUSUAL_AMOUNT" in rule_codes
+    assert "RULE_IMPOSSIBLE_LOCATION" in rule_codes
+
+
+def test_audit_logs_querying():
+    """Verify persistent reviewer audit trail can be queried via API."""
+    res = client.get("/api/audit-logs")
+    assert res.status_code == 200
+    data = res.json()
+    assert "logs" in data
+    assert data["total"] >= 1
+    assert any("Alice Analyst" in l.get("reviewer", "") for l in data["logs"])
+
+
+def test_attack_scenarios_trigger():
+    """Verify 1-click test attack scenario triggers work end-to-end."""
+    # Test Velocity Scenario
+    v_res = client.post("/api/scenarios/trigger", json={"scenario_type": "velocity"})
+    assert v_res.status_code == 200
+    v_data = v_res.json()
+    assert any(f["rule_code"] == "RULE_VELOCITY" for f in v_data.get("flags", []))
+
+    # Test Impossible Travel Scenario
+    t_res = client.post("/api/scenarios/trigger", json={"scenario_type": "impossible_travel"})
+    assert t_res.status_code == 200
+    t_data = t_res.json()
+    assert any(f["rule_code"] == "RULE_IMPOSSIBLE_LOCATION" for f in t_data.get("flags", []))
+
+    # Test Unusual Amount Scenario
+    a_res = client.post("/api/scenarios/trigger", json={"scenario_type": "unusual_amount"})
+    assert a_res.status_code == 200
+    a_data = a_res.json()
+    assert any(f["rule_code"] == "RULE_UNUSUAL_AMOUNT" for f in a_data.get("flags", []))
+
+
+def test_forensic_dossier_endpoint():
+    """Verify forensic dossier export endpoint produces compliant audit payload."""
+    res = client.post("/api/scenarios/trigger", json={"scenario_type": "unusual_amount"})
+    tx_id = res.json()["transaction_id"]
+
+    dossier_res = client.get(f"/api/transactions/{tx_id}/dossier")
+    assert dossier_res.status_code == 200
+    dossier = dossier_res.json()
+    assert dossier["dossier_id"] == f"DOSSIER-{tx_id}"
+    assert "triggered_rule_flags" in dossier
+    assert "aws_alert_notification" in dossier
+    assert "reviewer_audit_trail" in dossier
+
+
