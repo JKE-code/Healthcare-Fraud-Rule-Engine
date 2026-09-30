@@ -4,7 +4,6 @@ import { Dashboard } from './pages/Dashboard';
 import { Payment } from './pages/Payment';
 import { PolicyRules } from './pages/PolicyRules';
 import { AuditLogs } from './pages/AuditLogs';
-import { initialMockTransactions } from './data/mockTransactions';
 import { API_URL } from './api';
 
 export function App() {
@@ -16,7 +15,6 @@ export function App() {
     return '/dashboard';
   });
 
-  const [transactions, setTransactions] = useState(initialMockTransactions);
   const [wsStatus, setWsStatus] = useState('live');
   const [modelStatus, setModelStatus] = useState(null);
 
@@ -46,10 +44,6 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleTransactionCreated = (newTx) => {
-    setTransactions((prev) => [newTx, ...prev]);
-  };
-
   return (
     <div className="app-layout">
       <Navbar
@@ -61,10 +55,7 @@ export function App() {
 
       <main className="app-main-content">
         {currentRoute === '/pay' && (
-          <Payment
-            onTransactionCreated={handleTransactionCreated}
-            onNavigate={navigate}
-          />
+          <Payment onNavigate={navigate} />
         )}
 
         {currentRoute === '/rules' && (
@@ -77,8 +68,6 @@ export function App() {
 
         {currentRoute === '/dashboard' && (
           <Dashboard
-            sharedTransactions={transactions}
-            onNewTransaction={setTransactions}
             wsStatus={wsStatus}
             setWsStatus={setWsStatus}
           />

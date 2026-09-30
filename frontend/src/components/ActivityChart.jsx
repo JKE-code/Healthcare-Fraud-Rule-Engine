@@ -20,12 +20,21 @@ export function ActivityChart({ transactions = [], selectedTx = null }) {
     };
   });
 
+  // If no transactions yet, show safe baseline point
+  const displayPoints = points.length > 0 ? points : [
+    { x: 20, y: 90, score: 5, id: 'INIT-1', time: 'LIVE', isSelected: false },
+    { x: 150, y: 90, score: 5, id: 'INIT-2', time: 'LIVE', isSelected: false },
+    { x: 300, y: 90, score: 5, id: 'INIT-3', time: 'LIVE', isSelected: false },
+  ];
+
   // Build SVG path
-  const pathD = points.reduce((acc, pt, i) => {
+  const pathD = displayPoints.reduce((acc, pt, i) => {
     return i === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`;
   }, '');
 
-  const areaD = `${pathD} L ${points[points.length - 1].x} 115 L ${points[0].x} 115 Z`;
+  const areaD = displayPoints.length > 0
+    ? `${pathD} L ${displayPoints[displayPoints.length - 1].x} 115 L ${displayPoints[0].x} 115 Z`
+    : '';
 
   return (
     <div className="secops-chart-card interactive-chart-card">
@@ -70,7 +79,7 @@ export function ActivityChart({ transactions = [], selectedTx = null }) {
           />
 
           {/* Data Points */}
-          {points.map((pt, idx) => {
+          {displayPoints.map((pt, idx) => {
             const isAlert = pt.score >= 50;
             const isHovered = hoveredPoint && hoveredPoint.id === pt.id;
             const isSelected = pt.isSelected;

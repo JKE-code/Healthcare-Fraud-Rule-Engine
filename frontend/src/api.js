@@ -1,5 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws";
+const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+export const API_URL = import.meta.env.VITE_API_URL || `http://${host}:8000`;
+export const WS_URL = import.meta.env.VITE_WS_URL || `ws://${host}:8000/ws`;
 
 export async function fetchTransactions(filter = {}) {
   const params = new URLSearchParams();
@@ -60,4 +61,3 @@ export async function toggleSimulator() {
   return res.json();
 }
 
-export { API_URL, WS_URL };

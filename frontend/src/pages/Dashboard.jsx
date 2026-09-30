@@ -8,8 +8,8 @@ import { ActivityChart } from '../components/ActivityChart';
 import { AlertToast } from '../components/AlertToast';
 import { WS_URL, fetchTransactions, resetSimulatorData } from '../api';
 
-export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setWsStatus }) {
-  const [transactions, setTransactions] = useState(sharedTransactions || []);
+export function Dashboard({ wsStatus, setWsStatus }) {
+  const [transactions, setTransactions] = useState([]);
   const [selectedTx, setSelectedTx] = useState(null);
   const [newTxId, setNewTxId] = useState(null);
   const [activeAlert, setActiveAlert] = useState(null);
@@ -32,27 +32,26 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       });
   }, []);
 
-  const handleIncomingTx = useCallback(
-    (newTx) => {
-      setTransactions((prev) => {
-        const updated = [newTx, ...prev.filter((t) => t.transaction_id !== newTx.transaction_id)].slice(0, 150);
-        if (onNewTransaction) onNewTransaction(updated);
-        return updated;
-      });
-
-      setNewTxId(newTx.transaction_id);
-      setTimeout(() => setNewTxId(null), 2500);
-
-      // If High/Critical risk, trigger floating SecOps toast
-      if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH' || newTx.is_flagged) {
-        setActiveAlert({
-          ...newTx,
-          id: `alert-${Date.now()}`
-        });
+  const handleIncomingTx = useCallback((newTx) => {
+    setTransactions((prev) => {
+      const exists = prev.some((t) => t.transaction_id === newTx.transaction_id);
+      if (exists) {
+        return prev.map((t) => (t.transaction_id === newTx.transaction_id ? newTx : t));
       }
-    },
-    [onNewTransaction]
-  );
+      return [newTx, ...prev].slice(0, 150);
+    });
+
+    setNewTxId(newTx.transaction_id);
+    setTimeout(() => setNewTxId(null), 2500);
+
+    // If High/Critical risk, trigger floating SecOps toast
+    if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH' || newTx.is_flagged) {
+      setActiveAlert({
+        ...newTx,
+        id: `alert-${Date.now()}`
+      });
+    }
+  }, []);
 
   const handleUpdateTx = useCallback((updatedTx) => {
     setTransactions((prev) =>
@@ -107,6 +106,34 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, [handleIncomingTx, handleUpdateTx, setWsStatus]);
+
+  // Periodic SQLite sync: Keeps queue synchronized even if browser was inactive or backgrounded
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      fetchTransactions({ limit: 100 })
+        .then((res) => {
+          if (res && res.transactions && res.transactions.length > 0) {
+            setTransactions((prev) => {
+              const map = new Map();
+              // Retain in-memory items first
+              prev.forEach((t) => map.set(t.transaction_id, t));
+              // Merge newly fetched transactions
+              res.transactions.forEach((t) => {
+                if (!map.has(t.transaction_id)) {
+                  map.set(t.transaction_id, t);
+                }
+              });
+              return Array.from(map.values())
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .slice(0, 150);
+            });
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(syncInterval);
+  }, []);
 
   // Aggregate KPI numbers from real SQLite transaction list
   const totalCount = transactions.length;

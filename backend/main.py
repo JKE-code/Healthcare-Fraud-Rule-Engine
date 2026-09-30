@@ -22,11 +22,13 @@ from backend.mock_data import get_random_sample_transaction, get_clean_seed_tran
 
 logger = logging.getLogger(__name__)
 
-# Controlled background stream: Disabled by default so random transactions do not spam console
-is_live_stream_active = False
+# Live background stream: Active by default so new incoming transactions stream in real-time
+is_live_stream_active = True
 
 
 async def dummy_transaction_worker():
+    # Allow server to initialize cleanly before first stream event
+    await asyncio.sleep(2)
     while True:
         try:
             if is_live_stream_active:
@@ -34,12 +36,15 @@ async def dummy_transaction_worker():
                 req = TransactionRequest(**sample_data)
                 db = SessionLocal()
                 try:
-                    await create_transaction(req, db)
+                    res = await create_transaction(req, db)
+                    tx_id = res.get("transaction_id", "") if isinstance(res, dict) else getattr(res, "transaction_id", "")
+                    risk = res.get("risk_level", "LOW") if isinstance(res, dict) else getattr(res, "risk_level", "LOW")
+                    logger.info(f"⚡ Emitted {tx_id}: {req.merchant} (₹{req.amount:,.0f}) for {req.customer_id} -> {risk}")
                 finally:
                     db.close()
         except Exception as e:
-            logger.debug(f"Background simulator step: {e}")
-        await asyncio.sleep(6)
+            logger.warning(f"Background simulator step: {e}")
+        await asyncio.sleep(4)
 
 
 async def seed_initial_database(db):

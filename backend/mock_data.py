@@ -61,7 +61,7 @@ CUSTOMER_PRESETS = [
         "home_location": "Mumbai",
         "device": "mobile",
         "channel": "UPI",
-        "merchants": ["Swiggy", "Zomato", "BookMyShow", "Blinkit", "Starbucks", "Amazon"],
+        "merchants": ["Swiggy", "Zomato", "BookMyShow", "Blinkit", "Starbucks", "Amazon Pantry"],
         "amounts": [180.0, 320.0, 450.0, 680.0, 1150.0],
     },
     {
@@ -91,16 +91,59 @@ CUSTOMER_PRESETS = [
         "merchants": ["Uber", "Swiggy", "Netflix", "Zomato", "GitHub"],
         "amounts": [150.0, 340.0, 650.0, 890.0, 1800.0],
     },
+    {
+        "customer_id": "CUST-1005",
+        "name": "Vikram Malhotra (Consultant)",
+        "home_location": "Delhi",
+        "device": "mobile",
+        "channel": "CREDIT_CARD",
+        "merchants": ["Uber Premier", "Starbucks", "Amazon", "Air India", "Marriott"],
+        "amounts": [850.0, 1600.0, 3200.0, 7500.0, 12500.0],
+    },
+    {
+        "customer_id": "CUST-1006",
+        "name": "Ananya Iyer (Researcher)",
+        "home_location": "Chennai",
+        "device": "mobile",
+        "channel": "UPI",
+        "merchants": ["Swiggy", "Blinkit", "Amazon Books", "Nilgiris Supermarket", "Cult.fit"],
+        "amounts": [240.0, 480.0, 920.0, 1400.0, 2600.0],
+    },
+    {
+        "customer_id": "CUST-1007",
+        "name": "Rajesh Nair (Architect)",
+        "home_location": "Kochi",
+        "device": "desktop",
+        "channel": "NET_BANKING",
+        "merchants": ["Autodesk", "Lulu Hypermarket", "IndianOil", "Kerala Books"],
+        "amounts": [850.0, 2100.0, 4500.0, 6800.0, 11000.0],
+    },
+    {
+        "customer_id": "CUST-1008",
+        "name": "Pooja Sen (Designer)",
+        "home_location": "Kolkata",
+        "device": "mobile",
+        "channel": "UPI",
+        "merchants": ["Zomato", "Spencer's Retail", "Adobe Creative", "Flurys Cafe"],
+        "amounts": [310.0, 650.0, 1200.0, 1850.0, 3400.0],
+    },
 ]
+
+_persona_rotation_index = 0
 
 
 def get_random_sample_transaction() -> Dict[str, Any]:
     """
     Generate realistic transactions with consistent customer personas, home locations,
     and appropriate baseline spending so normal transactions pass rule checks cleanly.
+    Rotates round-robin so consecutive transactions belong to different users/cities.
     """
-    category = random.choices(["normal", "suspicious", "critical"], weights=[0.80, 0.12, 0.08])[0]
-    persona = random.choice(CUSTOMER_PRESETS)
+    global _persona_rotation_index
+    category = random.choices(["normal", "suspicious", "critical"], weights=[0.85, 0.10, 0.05])[0]
+
+    # Rotate persona across 8 users to ensure zero false velocity collisions
+    persona = CUSTOMER_PRESETS[_persona_rotation_index % len(CUSTOMER_PRESETS)]
+    _persona_rotation_index += 1
 
     if category == "normal":
         # Realistic normal transaction matching user's home location and typical spending
@@ -131,7 +174,7 @@ def get_random_sample_transaction() -> Dict[str, Any]:
             "location": persona["home_location"],
             "device": "new_device",
             "payment_method": "CARD",
-            "customer_id": "CUST-1001",
+            "customer_id": persona["customer_id"],
             "channel": "CARD",
         }
 
