@@ -88,14 +88,14 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus, modelN
 
           <div
             className="user-avatar-btn"
-            title="Lead Reviewer: Vikas (SecOps Operations)"
+            title="SecOps Fraud Analyst"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', width: 'auto' }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8' }}>Vikas (Reviewer)</span>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>SecOps Analyst</span>
           </div>
         </div>
       </div>

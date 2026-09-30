@@ -48,7 +48,7 @@ MERCHANTS = [
 
 def generate_dataset(num_records=150):
     rows = []
-    base_time = datetime.now(timezone.utc) - timedelta(hours=6)
+    base_time = datetime(2020, 6, 21, 12, 0, 0, tzinfo=timezone.utc)
     cardholders = [
         ("CUST-1001", "Rohan", "Sharma", "M", "Bandra West", CITIES[0]),
         ("CUST-1002", "Priya", "Verma", "F", "Indiranagar", CITIES[2]),

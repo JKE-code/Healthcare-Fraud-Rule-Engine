@@ -175,12 +175,13 @@ export function AuditLogs() {
 
   const filteredLogs = logs.filter((log) => {
     const matchesDecision = decisionFilter === 'ALL' || log.decision === decisionFilter;
+    const q = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      log.txId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.reason.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.actor.toLowerCase().includes(searchQuery.toLowerCase());
+      (log.txId || '').toLowerCase().includes(q) ||
+      (log.id || '').toLowerCase().includes(q) ||
+      (log.merchant || '').toLowerCase().includes(q) ||
+      (log.reason || '').toLowerCase().includes(q) ||
+      (log.actor || '').toLowerCase().includes(q);
     return matchesDecision && matchesSearch;
   });
 
@@ -390,7 +391,7 @@ export function AuditLogs() {
                               </span>
                               <div className="payload-actions">
                                 <span className="sha-hash-text font-mono">
-                                  SHA-256: {log.payload.sha256_hash.substring(0, 16)}...
+                                  SHA-256: {((log.payload && log.payload.sha256_hash) || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855').substring(0, 16)}...
                                 </span>
                                 <button
                                   className="btn-copy-json"

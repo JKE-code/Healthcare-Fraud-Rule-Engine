@@ -166,10 +166,11 @@ export function PolicyRules() {
 
   const filteredRules = rules.filter((rule) => {
     const matchesCat = activeCategory === 'All' || rule.category === activeCategory;
+    const q = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      rule.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rule.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rule.description.toLowerCase().includes(searchQuery.toLowerCase());
+      (rule.name || '').toLowerCase().includes(q) ||
+      (rule.id || '').toLowerCase().includes(q) ||
+      (rule.description || '').toLowerCase().includes(q);
     return matchesCat && matchesSearch;
   });
 
