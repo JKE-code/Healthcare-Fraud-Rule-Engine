@@ -1,82 +1,63 @@
-# Acentra Fraud Rule Engine & SecOps Review Console
+# Acentra — Real-Time Fraud Rule Engine & SecOps Review Console
 
-> **Enterprise-grade, hybrid transaction fraud detection platform combining an extensible plug-and-play rule engine, adaptive Dual-Engine Machine Learning (LightGBM / RandomForest) with SHAP explainability, SQLite persistence, automated AWS SES/SNS alerting, and a real-time React 19 reviewer console.**
+> **A high-throughput, low-latency financial fraud detection platform combining deterministic heuristic rule policies, adaptive Dual-Engine Machine Learning (LightGBM / RandomForest) with SHAP explainability, relational persistence, automated AWS alerting, and a real-time SecOps triage console.**
 
-[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.14-blue?style=for-the-badge&logo=python)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
-[![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev)
-[![SQLite](https://img.shields.io/badge/SQLite-SQLAlchemy_2.0-003B57?style=for-the-badge&logo=sqlite)](https://www.sqlite.org)
-[![AWS SES / SNS](https://img.shields.io/badge/AWS-SES_%26_SNS-FF9900?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com)
-[![SHAP](https://img.shields.io/badge/Explainability-SHAP%20TreeExplainer-red?style=for-the-badge)](https://github.com/slundberg/shap)
-[![Tests](https://img.shields.io/badge/Tests-10%2F10%20Passing-brightgreen?style=for-the-badge)](backend/test_rule_engine.py)
-
----
-
-## Executive Summary & Solution Pitch
-
-Acentra Fraud Rule Engine is an enterprise-grade, low-latency financial risk intelligence system. It combines an **Open-Closed Principle (OCP) extensible rule engine** with an **adaptive Dual-Engine Machine Learning pipeline (LightGBM & RandomForest)** and **SHAP TreeExplainer feature attributions**.
-
-Designed for high-throughput transactional authorization pipelines (UPI, Credit Card, NetBanking), it evaluates incoming transactions in **< 5ms**, persists complete audit trails to **SQLite relational storage**, dispatches real-time **AWS SES/SNS incident notifications**, and empowers security analysts through a **real-time React 19 Reviewer Console** with live WebSockets.
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19.0-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev)
+[![SQLite](https://img.shields.io/badge/SQLite-SQLAlchemy_2.0-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org)
+[![AWS SES / SNS](https://img.shields.io/badge/AWS-SES_%26_SNS-FF9900?style=flat-square&logo=amazon-aws&logoColor=white)](https://aws.amazon.com)
+[![SHAP](https://img.shields.io/badge/Explainability-SHAP%20TreeExplainer-E25A1C?style=flat-square)](https://github.com/slundberg/shap)
+[![Tests](https://img.shields.io/badge/Tests-10%2F10%20Passing-2ea44f?style=flat-square)](backend/test_rule_engine.py)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 ---
 
-## 1. Problem Statement Compliance Matrix
+## Overview
 
-| Core Hackathon Requirement | Implementation in this Repository | Verification Status |
-| :--- | :--- | :---: |
-| **Rule engine for risk evaluation** | [`backend/rules/registry.py`](backend/rules/registry.py) executes registered rules, calculates composite risk scores (0.00–1.00), determines actions (`APPROVE`, `REVIEW`, `BLOCK`). | ✅ **100% Passed** |
-| **At least three independent rules** | 1. **Velocity Surge** ([`velocity_rule.py`](backend/rules/velocity_rule.py))<br>2. **Unusual Amount Outlier** ([`unusual_amount_rule.py`](backend/rules/unusual_amount_rule.py))<br>3. **Impossible Geographical Travel** ([`impossible_location_rule.py`](backend/rules/impossible_location_rule.py)) | ✅ **100% Passed** |
-| **Extensible without core modification** | Adheres strictly to **Open-Closed Principle (OCP)**. New rules subclass [`BaseRule`](backend/rules/base.py) with `@register_rule`. Verified via [`new_device_rule.py`](backend/rules/new_device_rule.py). | ✅ **100% Passed** |
-| **Persist transactions & fraud flags** | Relational schema via **SQLAlchemy + SQLite** (`fraud_rules.db`) storing `transactions`, `fraud_flags`, and `review_audit_logs`. | ✅ **100% Passed** |
-| **React-based reviewer console** | Real-time dark-theme SecOps console with live WebSockets, triage queues, metrics telemetry, and interactive actions. | ✅ **100% Passed** |
-| **Display flagged transactions** | Filter tab in [`TransactionTable.jsx`](frontend/src/components/TransactionTable.jsx) and dedicated backend route (`GET /api/transactions/flagged`). | ✅ **100% Passed** |
-| **Mark as reviewed or cleared** | Interactive action bar in [`TransactionDetails.jsx`](frontend/src/components/TransactionDetails.jsx) linked to `PATCH /api/transactions/{id}/review`. | ✅ **100% Passed** |
-| **AWS SES email / SNS notification** | [`backend/services/aws_notifier.py`](backend/services/aws_notifier.py) dispatches email (SES) and SMS/Topic (SNS) when risk score $\ge 0.70$ with auto sandbox fallback. | ✅ **100% Passed** |
+Modern payment networks (UPI, Credit Cards, Cross-Border Gateways) require instantaneous fraud interception without degrading checkout latency. **Acentra** is an enterprise-grade risk decisioning engine designed to evaluate authorizations in **< 5ms**.
+
+It pairs deterministic business rules (geospatial travel velocity, sliding-window velocity bursts, amount deviation models) with an **adaptive Dual-Engine Machine Learning pipeline (LightGBM / RandomForest)** and **SHAP (SHapley Additive exPlanations)**. Flagged incidents stream in real-time over WebSockets to a dedicated **SecOps Reviewer Console** for analyst triage, complete with automated **AWS SES/SNS incident notifications** and immutable cryptographic audit logging.
 
 ---
 
-## 2. "Good-to-Have" & Standout Bonus Features
+## Key Features
 
-Beyond the core hackathon requirements, the following production enhancements were engineered:
+### ⚡ Sub-5ms Hybrid Evaluation Pipeline
+* **Deterministic Rule Policies**: Evaluates transaction velocity, geospatial speed, amount outliers, and device fingerprints in parallel.
+* **Dual-Engine ML Classification**: Adaptive primary **LightGBM** classifier with automated **RandomForest** fallback.
+* **Unsupervised Anomaly Scoring**: Embedded `IsolationForest` model to detect zero-day fraud patterns without historical labels.
+* **Transparent Explainability**: Local feature-level **SHAP TreeExplainer** attributions show analysts the exact mathematical justification for every risk score.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        STANDOUT INNOVATIONS & BONUS IMPLEMENTATIONS                    │
-├────────────────────────────────┬───────────────────────────────────────────────────────┤
-│ 1. Dual-Engine Hybrid ML       │ Adaptive primary LightGBM classifier with RandomForest│
-│    + SHAP Explainability       │ fallback and SHAP TreeExplainer feature attribution.  │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 2. Authentic Kaggle Dataset    │ Ingestion of 150 authentic credit card records from   │
-│    + Live Mode Switcher        │ Kaggle (kartik2112/fraud-detection) with UI toggle.   │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 3. Runtime Dynamic Rule Tuning │ Live hot-reload of rule thresholds (count, speed,     │
-│    (Hot-Reload)                │ multipliers) via PATCH /api/rules/{code} without restart.│
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 4. Live Rule Analytics & FPR   │ Real SQLite evaluation counts, positive trigger rates, │
-│    Telemetry                   │ and false-positive rates per heuristic.              │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 5. Data Provenance Badges      │ Distinct row-level badges ([KAGGLE] vs [SYNTH]) with  │
-│    & Feed Source Filters       │ multi-stream filtering in the reviewer monitoring queue.│
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 6. Cryptographic Audit Export  │ Tamper-evident reviewer log with 1-click JSON archive  │
-│    & Forensic Dossiers         │ download and forensic incident dossier generation.    │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 7. Attack Scenario Simulator   │ 5 interactive attack vectors (Velocity, Geo-Jump,    │
-│    & Payment Testing Gateway   │ Amount Spike, New Device, Clean Baseline) in UI.      │
-├────────────────────────────────┼───────────────────────────────────────────────────────┤
-│ 8. Zero-Cost Smart Sandbox     │ Seamless AWS SES/SNS emulation ensuring zero cloud    │
-│    for AWS Alerting            │ billing while generating verified delivery receipts.  │
-└────────────────────────────────┴───────────────────────────────────────────────────────┘
-```
+### 🛡️ Extensible Rule Engine (Open-Closed Principle)
+* **Modular Plug-and-Play**: Register custom detection rules with a simple `@register_rule` decorator without altering core engine logic.
+* **Runtime Dynamic Hot-Reload**: Adjust rule thresholds (velocity limits, Haversine speed limits, amount multipliers) and weights via API without server restarts.
+* **Live Rule Analytics**: Tracks real-time evaluation counts, positive trigger rates, and false-positive rates per rule directly from SQLite telemetry.
+
+### 🖥️ Real-Time SecOps Reviewer Console
+* **Reactive WebSocket Feed**: Live transaction push with sub-second visual signal indicators and high-risk audio/toast alerts.
+* **Analyst Triage Queue**: Filter transactions by status (`Flagged`, `Reviewed`, `Cleared`) and risk tier (`Critical`, `High`, `Medium`, `Low`).
+* **Interactive Analyst Actions**: One-click **"Mark as Reviewed"** and **"Mark as Cleared"** with mandatory justification notes.
+* **Forensic Incident Dossiers**: Generate and download comprehensive, cryptographically verified incident reports per transaction.
+
+### 📊 Multi-Stream Ingestion & Benchmark Dataset
+* **Kaggle Dataset Streaming**: Integrated 150-record authentic credit card fraud dataset from the benchmark [kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) corpus.
+* **Executive Mode Switcher**: Live frontend toggle to switch between **Authentic Kaggle Dataset** and **Procedural Synthetic Personas**.
+* **Data Provenance Badges**: Visual indicators (`[KAGGLE]` vs `[SYNTH]`) and feed-specific filter tabs across the monitoring queue.
+
+### ☁️ Automated Cloud Alerting & Compliance
+* **Multi-Channel Dispatch**: Automated email notifications via **AWS SES** and SMS/push broadcasts via **AWS SNS** for critical risks ($\ge 0.70$).
+* **Zero-Cost Smart Sandbox**: Seamlessly falls back to an internal delivery receipt simulator if AWS keys are not supplied ($0.00 spend).
+* **SOC-2 Audit Trail**: Chronological, tamper-evident audit logs recording every human override, exportable to JSON in 1 click.
 
 ---
 
-## 3. Architecture & End-to-End Flow
+## Architecture
 
 ```text
-                             Incoming Transaction Stream
-                    (Kaggle Real Dataset  OR  Synthetic Personas)
+                           Incoming Transaction Stream
+                    (Authentic Kaggle Dataset  OR  Synthetic Personas)
                                          │
                                          ▼
                              FastAPI Ingestion Engine
@@ -87,7 +68,7 @@ Beyond the core hackathon requirements, the following production enhancements we
                  ▼                                               ▼
    ┌───────────────────────────┐                   ┌───────────────────────────┐
    │  Extensible Rule Engine   │                   │    Dual-Engine ML Model   │
-   │      (backend/rules/)     │                   │   (LightGBM/RandomForest) │
+   │      (backend/rules/)     │                   │   (LightGBM / RandomForest)│
    ├───────────────────────────┤                   ├───────────────────────────┤
    │ • RULE_VELOCITY (Window)  │                   │ • Fraud Probability %     │
    │ • RULE_UNUSUAL_AMOUNT     │                   │ • IsolationForest Anomaly │
@@ -99,7 +80,7 @@ Beyond the core hackathon requirements, the following production enhancements we
                                          │
                                          ▼
                             Composite Risk Evaluation
-                        (Score: 0.0–1.0  |  Decision)
+                        (Score: 0.00–1.00  |  Decision)
                                          │
                  ┌───────────────────────┴───────────────────────┐
                  ▼                                               ▼
@@ -133,79 +114,79 @@ Beyond the core hackathon requirements, the following production enhancements we
 
 ---
 
-## 4. The Heuristic Rule Engine (Open-Closed Principle)
+## Active Rule Policies
 
-All rules inherit from [`BaseRule`](backend/rules/base.py) and auto-register via `@register_rule`. They operate independently and can be toggled or tuned at runtime without restarting the server:
-
-### Rule 1: Transaction Velocity Surge (`RULE_VELOCITY`)
-* **Implementation**: [`backend/rules/velocity_rule.py`](backend/rules/velocity_rule.py)
-* **Logic**: Queries customer history from SQLite within a sliding window (default 60s).
-* **Trigger**: Flags if transaction count $\ge 3$ within the window. Escalates to `CRITICAL` if $\ge 4$ or rapid burst occurs in $< 15$ seconds.
-
-### Rule 2: Unusual Transaction Amount (`RULE_UNUSUAL_AMOUNT`)
-* **Implementation**: [`backend/rules/unusual_amount_rule.py`](backend/rules/unusual_amount_rule.py)
-* **Logic**: Compares amount against absolute ceiling (₹50,000) and historical customer baseline spending average.
-* **Trigger**: Flags if `amount >= 50,000` or `amount >= baseline * 3.5`. Escalates to `CRITICAL` if multiplier exceeds $10\times$ baseline.
-
-### Rule 3: Impossible Geographical Location & Travel Speed (`RULE_IMPOSSIBLE_LOCATION`)
-* **Implementation**: [`backend/rules/impossible_location_rule.py`](backend/rules/impossible_location_rule.py)
-* **Logic**: Resolves latitude/longitude between consecutive authorizations and computes great-circle distance using the **Haversine formula**:
-  $$\text{speed (km/h)} = \frac{\text{distance (km)}}{\Delta t \text{ (hours)}}$$
-* **Trigger**: Flags as `CRITICAL` if required velocity $> 850\text{ km/h}$ (faster than a commercial flight) or distance $> 50\text{ km}$ traversed in $< 5$ minutes.
-
-### Rule 4: New Device on High-Value Transaction (`RULE_NEW_DEVICE`)
-* **Implementation**: [`backend/rules/new_device_rule.py`](backend/rules/new_device_rule.py)
-* **Logic**: Detects previously unseen device identifiers or emulator profiles paired with amounts exceeding ₹15,000.
+| Rule Code | Rule Name | Detection Methodology | Default Action |
+| :--- | :--- | :--- | :--- |
+| `RULE_VELOCITY` | **Velocity Surge** | Counts authorizations in a rolling sliding window (default: $\ge 3$ tx in 60s). Escalates to Critical on rapid sub-15s bursts. | Autonomous Challenge / Step-Up |
+| `RULE_UNUSUAL_AMOUNT` | **Unusual Amount** | Statistical outlier detection comparing authorization amount against an absolute threshold (₹50,000) and historical multiplier ($3.5\times$). | Autonomous Block |
+| `RULE_IMPOSSIBLE_LOCATION`| **Impossible Travel** | Calculates great-circle distance via **Haversine formula** between sequential card taps; flags travel velocity $> 850\text{ km/h}$. | Autonomous Block |
+| `RULE_NEW_DEVICE` | **New Device Risk** | Flags transactions originating from unverified device signatures paired with high transaction values ($> ₹15,000$). | Manual Review |
 
 ---
 
-## 5. Dual-Engine Machine Learning & SHAP Explainability
+## Extensibility Guide: Adding Custom Rules
 
-In addition to deterministic heuristic rules, the platform incorporates an auxiliary ML intelligence layer:
+Acentra follows the **Open-Closed Principle**. You can register a new detection policy in a single file without modifying the core engine:
 
-* **Primary Classifier**: LightGBM Classifier (fast inference, optimized for tabular transaction trees).
-* **Baseline Classifier**: Scikit-Learn `RandomForestClassifier` with automatic fallback.
-* **Anomaly Detection**: `IsolationForest` unsupervised model for statistical outlier detection.
-* **SHAP Explainability**: Live `shap.TreeExplainer` providing local feature attribution values:
-  $$\text{Risk Impact} = \phi_0 + \sum_{i=1}^M \phi_i(x)$$
-  Features analyzed: `amount`, `merchant_risk`, `location_risk`, `device_risk`, `payment_risk`, `hour`, `amount_deviation`.
+```python
+# backend/rules/custom_watchlist_rule.py
+from backend.rules.base import BaseRule, RuleResult
+from backend.rules.registry import register_rule
+
+@register_rule
+class MerchantWatchlistRule(BaseRule):
+    rule_code = "RULE_MERCHANT_WATCHLIST"
+    rule_name = "High-Risk Merchant Category"
+    description = "Flags transactions directed to known risky merchant categories."
+    weight = 1.2
+
+    def evaluate(self, transaction: dict, history: list) -> RuleResult:
+        merchant = str(transaction.get("merchant", "")).lower()
+        if "crypto" in merchant or "gaming" in merchant:
+            return RuleResult(
+                rule_code=self.rule_code,
+                rule_name=self.rule_name,
+                triggered=True,
+                risk_score=0.85,
+                severity="CRITICAL",
+                reason=f"Transaction routed to high-risk merchant '{transaction.get('merchant')}'.",
+                metrics={"merchant": transaction.get("merchant")}
+            )
+        return RuleResult(rule_code=self.rule_code, rule_name=self.rule_name, triggered=False)
+```
+
+The new rule is automatically discovered, evaluated, persisted, and surfaced in the Reviewer Console.
 
 ---
 
-## 6. Real Kaggle Dataset & Live Ingestion Switcher
-
-The system includes an authentic 150-record dataset from the Kaggle *Credit Card Transactions Fraud Detection* benchmark ([kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection)):
-* **Path**: [`dataset/kaggle_credit_card_fraud.csv`](dataset/kaggle_credit_card_fraud.csv)
-* **Streamer Engine**: [`backend/kaggle_streamer.py`](backend/kaggle_streamer.py)
-* **Executive Switcher**: The reviewer console header features a 1-click toggle to switch between **Synthetic Personas** and **Real Kaggle Credit Card transactions**, updating WebSocket streams and database records instantly.
-
----
-
-## 7. Quick Start & Verification
+## Quick Start
 
 ### Prerequisites
 * Python 3.10+ (tested on Python 3.11 and 3.14)
-* Node.js 18+ & npm
+* Node.js 18+ and npm
 
-### 7.1 Automated Test Suite (10/10 Tests)
+### 1. Backend Setup & Automated Tests
 ```bash
-# Run backend pytest test suite
-python -m pytest backend/test_rule_engine.py -v
-```
+# Clone the repository
+git clone https://github.com/JKE-code/Healthcare-Fraud-Rule-Engine.git
+cd Healthcare-Fraud-Rule-Engine
 
-### 7.2 Running Backend Server (Port 8000)
-```bash
-# Install backend dependencies
+# Install Python dependencies
 pip install -r backend/requirements.txt
 
-# Start FastAPI server with live reload and background worker
+# Run full test suite (10/10 tests pass)
+python -m pytest backend/test_rule_engine.py -v
+
+# Start the FastAPI server on port 8000
 python -m uvicorn backend.main:app --reload --port 8000
 ```
-* Interactive API Documentation (Swagger): [http://localhost:8000/docs](http://localhost:8000/docs)
+* Interactive Swagger Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 * Health Check Endpoint: [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
-### 7.3 Running Frontend Review Console (Port 5173)
+### 2. Frontend Review Console Setup
 ```bash
+# In a separate terminal
 cd frontend
 npm install
 npm run dev
@@ -214,39 +195,42 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 8. REST & WebSocket API Specification
+## API Reference
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/transactions` | Ingests transaction, evaluates via Rule Engine + ML, saves to SQLite, alerts AWS if high-risk, broadcasts via WebSocket. |
-| `GET` | `/api/transactions` | Returns transaction list with optional filters (`?flagged=true`, `?status=FLAGGED`, `?limit=100`). |
-| `GET` | `/api/transactions/flagged` | Returns all flagged transactions pending reviewer triage. |
-| `GET` | `/api/transactions/{id}` | Returns individual transaction details with triggered rule flags. |
-| `PATCH`| `/api/transactions/{id}/review` | Reviewer action: updates status to `REVIEWED` or `CLEARED`, persists audit log. |
-| `GET` | `/api/transactions/{id}/dossier` | Generates full forensic incident compliance dossier. |
-| `GET` | `/api/rules` | Returns metadata, parameters, and weights for all registered rules. |
-| `PATCH`| `/api/rules/{rule_code}` | **Hot-Reload**: Dynamically updates rule thresholds, weights, or enabled state at runtime. |
-| `GET` | `/api/rules/analytics` | Returns real SQLite-derived trigger counts and false-positive triage rates. |
-| `GET` | `/api/audit-logs` | Chronological audit trail of all analyst triage actions. |
-| `GET` | `/api/audit-logs/export` | Downloadable tamper-evident JSON compliance archive. |
-| `POST` | `/api/scenarios/trigger` | Triggers pre-conditioned attack vectors (Velocity, Impossible Travel, Amount Spike). |
-| `POST` | `/api/scenarios/stream-kaggle` | Streams authentic Kaggle dataset records into the live pipeline. |
-| `GET` | `/api/simulator/status` | Returns active stream mode (`synthetic` vs `kaggle`) and dataset telemetry. |
-| `POST` | `/api/simulator/mode` | Switches live background transaction feed between synthetic and Kaggle. |
-| `POST` | `/api/alerts/test` | On-demand test dispatch of AWS SES email and SNS topic notification. |
-| `GET` | `/api/health` | Service health, active rule count, ML model status (`live`), and active model name. |
-| `WS` | `/ws` | Bi-directional streaming WebSocket for real-time transaction and triage updates. |
+### Core Transaction Endpoints
+* `POST /api/transactions` — Ingest and evaluate an authorization payload; returns composite risk score, flags, and ML inference.
+* `GET /api/transactions` — Retrieve persisted transactions with query filters (`?flagged=true`, `?status=FLAGGED`, `?limit=100`).
+* `GET /api/transactions/flagged` — Retrieve pending triage items for the analyst queue.
+* `GET /api/transactions/{id}` — Fetch complete transaction details with triggered rule breakdown.
+* `PATCH /api/transactions/{id}/review` — Update review status (`REVIEWED` or `CLEARED`) and write to audit trail.
+* `GET /api/transactions/{id}/dossier` — Generate forensic compliance incident dossier.
 
----
+### Rule Engine & Analytics Endpoints
+* `GET /api/rules` — List all registered rules, weights, and parameters.
+* `PATCH /api/rules/{rule_code}` — **Hot-Reload**: Update rule configuration, thresholds, or enabled state at runtime.
+* `GET /api/rules/analytics` — Return SQLite-derived evaluation counts, positive rates, and false-positive rates.
 
-## 9. Deployment Architecture (100% Free)
+### Audit & Security Endpoints
+* `GET /api/audit-logs` — Chronological log of all analyst actions and status changes.
+* `GET /api/audit-logs/export` — Downloadable JSON compliance archive with cryptographic identifiers.
+* `POST /api/alerts/test` — Test AWS SES email and SNS topic notification dispatch on demand.
 
-* **Frontend**: Deployable on **Vercel** (Free Hobby Tier) with edge CDN and global SSL.
-* **Backend**: Deployable on **Render.com** (Free Web Service) or accessible locally via **Cloudflare Tunnel (`cloudflared`)** / **ngrok** for zero-cost, persistent WebSockets, and background asynchronous loops.
+### Simulator & Feed Controls
+* `GET /api/simulator/status` — Get current stream mode (`synthetic` or `kaggle`) and dataset info.
+* `POST /api/simulator/mode` — Switch background stream mode between synthetic and Kaggle.
+* `POST /api/scenarios/trigger` — Trigger pre-conditioned attack vectors (Velocity, Travel, Amount Spike).
+* `POST /api/scenarios/stream-kaggle` — Batch stream authentic Kaggle records into the pipeline.
+* `WS /ws` — Real-time bi-directional WebSocket connection for transaction and review broadcasts.
 
 ---
 
-## 10. Repository Documentation Links
-* [`proceedings.md`](proceedings.md) — Phased architecture refactoring and engineering plan.
-* [`project_idea.md`](project_idea.md) — Problem statement analysis & requirement mapping.
-* [`dataset/kaggle_credit_card_fraud.csv`](dataset/kaggle_credit_card_fraud.csv) — Authentic benchmark dataset.
+## Deployment Blueprint
+
+* **Frontend**: Deploy directly to **Vercel** with zero configuration (`root: frontend`, build command: `npm run build`).
+* **Backend**: Deploy on **Render.com** (Free Web Service) or expose locally using **Cloudflare Tunnel** (`npx cloudflared tunnel --url http://localhost:8000`) for persistent WebSockets and background loops at zero cost.
+
+---
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
