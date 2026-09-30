@@ -65,4 +65,5 @@ frontend/.env.*.local
 test_apk/.gradle/
 test_apk/local.properties
 test_apk/.idea/
-
+# Presentations & Pitch Deck Notes
+ppt.md
