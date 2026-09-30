@@ -2,6 +2,10 @@
 
 > **A high-throughput, low-latency financial fraud detection platform combining deterministic heuristic rule policies, adaptive Dual-Engine Machine Learning (LightGBM / RandomForest) with SHAP explainability, relational persistence, automated AWS alerting, and a real-time SecOps triage console.**
 
+[![Live Demo Console](https://img.shields.io/badge/Live%20Demo-Vercel%20Console-success?style=for-the-badge&logo=vercel)](https://healthcare-fraud-rule-engine.vercel.app/)
+[![Cloud API Backend](https://img.shields.io/badge/Render%20Cloud-Backend%20API-informational?style=for-the-badge&logo=render)](https://healthcare-fraud-rule-engine.onrender.com)
+[![Swagger API Docs](https://img.shields.io/badge/Swagger%20Docs-Interactive%20API-FF6C37?style=for-the-badge&logo=swagger)](https://healthcare-fraud-rule-engine.onrender.com/docs)
+
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
@@ -11,6 +15,16 @@
 [![SHAP](https://img.shields.io/badge/Explainability-SHAP%20TreeExplainer-E25A1C?style=flat-square)](https://github.com/slundberg/shap)
 [![Tests](https://img.shields.io/badge/Tests-10%2F10%20Passing-2ea44f?style=flat-square)](backend/test_rule_engine.py)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+
+---
+
+## 🚀 Live Deployments
+
+| Component | Provider | Live URL | Description |
+| :--- | :--- | :--- | :--- |
+| **SecOps Reviewer Console** | **Vercel** | [https://healthcare-fraud-rule-engine.vercel.app/](https://healthcare-fraud-rule-engine.vercel.app/) | Production React 19 Frontend with real-time WebSocket feed & Kaggle switch |
+| **Cloud API & Rule Engine** | **Render** | [https://healthcare-fraud-rule-engine.onrender.com](https://healthcare-fraud-rule-engine.onrender.com) | FastAPI backend, SQLite persistence, ML inference & rule evaluation |
+| **Interactive API Docs** | **Swagger / OpenAPI** | [https://healthcare-fraud-rule-engine.onrender.com/docs](https://healthcare-fraud-rule-engine.onrender.com/docs) | Live interactive endpoint testing & schema exploration |
 
 ---
 
@@ -226,8 +240,8 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Deployment Blueprint
 
-* **Frontend**: Deploy directly to **Vercel** with zero configuration (`root: frontend`, build command: `npm run build`).
-* **Backend**: Deploy on **Render.com** (Free Web Service) or expose locally using **Cloudflare Tunnel** (`npx cloudflared tunnel --url http://localhost:8000`) for persistent WebSockets and background loops at zero cost.
+* **Frontend (Vercel)**: Deployed at [https://healthcare-fraud-rule-engine.vercel.app/](https://healthcare-fraud-rule-engine.vercel.app/) (`root: frontend`, build command: `npm run build`). Connected via `frontend/.env.production` to the cloud backend.
+* **Backend (Render)**: Deployed at [https://healthcare-fraud-rule-engine.onrender.com](https://healthcare-fraud-rule-engine.onrender.com) (FastAPI Web Service with automatic worker lifecycle, SQLite persistence, dual ML models, and real-time WebSocket support).
 
 ---
 
