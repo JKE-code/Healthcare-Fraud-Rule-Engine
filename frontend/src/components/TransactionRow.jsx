@@ -39,6 +39,39 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
         <div className="tx-id-badge-wrap">
           <span className={`tx-signal-dot ${isCritical || isHigh ? 'dot-crimson' : 'dot-emerald'}`} />
           <span className="tx-id-code">{tx.transaction_id}</span>
+          {(tx.channel === 'KAGGLE_DATASET' || tx.channel === 'KAGGLE_LIVE') ? (
+            <span
+              style={{
+                fontSize: '8.5px',
+                padding: '1px 4px',
+                borderRadius: '3px',
+                fontWeight: 800,
+                background: 'rgba(2, 132, 199, 0.25)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                letterSpacing: '0.03em',
+              }}
+              title="Authentic transaction from Kaggle dataset (kartik2112/fraud-detection)"
+            >
+              KAGGLE
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: '8.5px',
+                padding: '1px 4px',
+                borderRadius: '3px',
+                fontWeight: 700,
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                letterSpacing: '0.03em',
+              }}
+              title="Procedural synthetic persona baseline"
+            >
+              SYNTH
+            </span>
+          )}
           {tx.aws_alert_sent && (
             <span
               className="scp-badge"

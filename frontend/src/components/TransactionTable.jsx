@@ -10,10 +10,17 @@ export function TransactionTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [reviewFilter, setReviewFilter] = useState('ALL'); // ALL, FLAGGED, REVIEWED, CLEARED
   const [riskFilter, setRiskFilter] = useState('ALL');
+  const [feedFilter, setFeedFilter] = useState('ALL'); // ALL, KAGGLE, SYNTHETIC
 
   const flaggedCount = transactions.filter(
     (t) => t.review_status === 'FLAGGED' || t.is_flagged
   ).length;
+
+  const kaggleCount = transactions.filter(
+    (t) => t.channel === 'KAGGLE_DATASET' || t.channel === 'KAGGLE_LIVE'
+  ).length;
+
+  const synthCount = transactions.length - kaggleCount;
 
   const filtered = transactions.filter((tx) => {
     const matchesSearch =
@@ -22,6 +29,11 @@ export function TransactionTable({
       (tx.location && tx.location.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (!matchesSearch) return false;
+
+    // Data Feed Source Filter (Kaggle Real vs Synthetic Personas)
+    const isKaggle = tx.channel === 'KAGGLE_DATASET' || tx.channel === 'KAGGLE_LIVE';
+    if (feedFilter === 'KAGGLE' && !isKaggle) return false;
+    if (feedFilter === 'SYNTHETIC' && isKaggle) return false;
 
     // Review Status Filter
     const currentStatus = tx.review_status || (tx.is_flagged ? 'FLAGGED' : 'CLEARED');
@@ -176,6 +188,66 @@ export function TransactionTable({
         >
           Cleared
         </button>
+
+        {/* Separator */}
+        <div style={{ width: '1px', height: '18px', background: 'rgba(255, 255, 255, 0.15)', alignSelf: 'center', margin: '0 4px' }} />
+
+        {/* Feed Source Filter Tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginRight: '4px' }}>
+            Data Feed:
+          </span>
+          <button
+            type="button"
+            onClick={() => setFeedFilter('ALL')}
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: feedFilter === 'ALL' ? '1px solid #94a3b8' : '1px solid transparent',
+              background: feedFilter === 'ALL' ? 'rgba(148, 163, 184, 0.2)' : 'transparent',
+              color: feedFilter === 'ALL' ? '#f1f5f9' : '#64748b',
+            }}
+          >
+            All Feeds
+          </button>
+          <button
+            type="button"
+            onClick={() => setFeedFilter('KAGGLE')}
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: feedFilter === 'KAGGLE' ? '1px solid #38bdf8' : '1px solid transparent',
+              background: feedFilter === 'KAGGLE' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+              color: feedFilter === 'KAGGLE' ? '#38bdf8' : '#64748b',
+            }}
+            title="Filter to authentic transactions from Kaggle dataset"
+          >
+            🔵 Kaggle Real ({kaggleCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFeedFilter('SYNTHETIC')}
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: feedFilter === 'SYNTHETIC' ? '1px solid #10b981' : '1px solid transparent',
+              background: feedFilter === 'SYNTHETIC' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+              color: feedFilter === 'SYNTHETIC' ? '#34d399' : '#64748b',
+            }}
+            title="Filter to procedural synthetic customer persona transactions"
+          >
+            🟢 Synthetic ({synthCount})
+          </button>
+        </div>
       </div>
 
       {/* Table Content */}

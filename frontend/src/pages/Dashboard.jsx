@@ -6,16 +6,27 @@ import { FraudChart } from '../components/FraudChart';
 import { RiskChart } from '../components/RiskChart';
 import { ActivityChart } from '../components/ActivityChart';
 import { AlertToast } from '../components/AlertToast';
-import { WS_URL, fetchTransactions, resetSimulatorData } from '../api';
+import { WS_URL, fetchTransactions, resetSimulatorData, fetchSimulatorStatus, setSimulatorMode } from '../api';
 
 export function Dashboard({ wsStatus, setWsStatus }) {
   const [transactions, setTransactions] = useState([]);
   const [selectedTx, setSelectedTx] = useState(null);
   const [newTxId, setNewTxId] = useState(null);
   const [activeAlert, setActiveAlert] = useState(null);
+  const [streamMode, setStreamMode] = useState('synthetic'); // 'synthetic' or 'kaggle'
+  const [isTogglingStream, setIsTogglingStream] = useState(false);
+  const [streamToast, setStreamToast] = useState(null);
 
-  // Load real transactions from SQLite backend on mount
+  // Load real transactions and stream mode from SQLite backend on mount
   useEffect(() => {
+    fetchSimulatorStatus()
+      .then((status) => {
+        if (status && status.mode) {
+          setStreamMode(status.mode);
+        }
+      })
+      .catch((err) => console.warn('Simulator status fetch warning:', err));
+
     fetchTransactions({ limit: 100 })
       .then((res) => {
         if (res && res.transactions && res.transactions.length > 0) {
@@ -31,6 +42,26 @@ export function Dashboard({ wsStatus, setWsStatus }) {
         console.warn('Initial transaction fetch warning:', err);
       });
   }, []);
+
+  const handleToggleStreamMode = async (targetMode) => {
+    if (streamMode === targetMode || isTogglingStream) return;
+    setIsTogglingStream(true);
+    try {
+      const res = await setSimulatorMode(targetMode);
+      setStreamMode(res.mode || targetMode);
+      setStreamToast({
+        mode: res.mode || targetMode,
+        text: targetMode === 'kaggle'
+          ? 'Switched to Real Kaggle Credit Card Dataset (kartik2112/fraud-detection)'
+          : 'Switched to Procedural Synthetic Persona Stream (Normal baseline + Attack spikes)'
+      });
+      setTimeout(() => setStreamToast(null), 4000);
+    } catch (err) {
+      console.error('Failed to change stream mode:', err);
+    } finally {
+      setIsTogglingStream(false);
+    }
+  };
 
   const handleIncomingTx = useCallback((newTx) => {
     setTransactions((prev) => {
@@ -160,7 +191,68 @@ export function Dashboard({ wsStatus, setWsStatus }) {
           </div>
         </div>
 
-        <div className="banner-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="banner-right" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Live Ingest Mode Switcher Pill */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'rgba(15, 23, 42, 0.85)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '8px',
+              padding: '2px',
+              gap: '2px',
+            }}
+            title="Toggle live background transaction stream between Synthetic Personas and Authentic Kaggle Dataset"
+          >
+            <button
+              type="button"
+              disabled={isTogglingStream}
+              onClick={() => handleToggleStreamMode('synthetic')}
+              style={{
+                padding: '5px 11px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.2s ease',
+                background: streamMode === 'synthetic' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                color: streamMode === 'synthetic' ? '#34d399' : '#94a3b8',
+                boxShadow: streamMode === 'synthetic' ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.5)' : 'none',
+              }}
+            >
+              <span style={{ fontSize: '10px' }}>🟢</span>
+              <span>Synthetic Feed</span>
+            </button>
+            <button
+              type="button"
+              disabled={isTogglingStream}
+              onClick={() => handleToggleStreamMode('kaggle')}
+              style={{
+                padding: '5px 11px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.2s ease',
+                background: streamMode === 'kaggle' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                color: streamMode === 'kaggle' ? '#38bdf8' : '#94a3b8',
+                boxShadow: streamMode === 'kaggle' ? 'inset 0 0 0 1px rgba(56, 189, 248, 0.5)' : 'none',
+              }}
+            >
+              <span style={{ fontSize: '10px' }}>🔵</span>
+              <span>Kaggle Real Dataset</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={async () => {
@@ -202,6 +294,34 @@ export function Dashboard({ wsStatus, setWsStatus }) {
           </div>
         </div>
       </div>
+
+      {/* Stream Mode Switch Notification Toast Banner */}
+      {streamToast && (
+        <div
+          style={{
+            margin: '0 0 16px 0',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: streamToast.mode === 'kaggle' ? 'rgba(2, 132, 199, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+            border: `1px solid ${streamToast.mode === 'kaggle' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(52, 211, 153, 0.4)'}`,
+            color: streamToast.mode === 'kaggle' ? '#7dd3fc' : '#6ee7b7',
+            fontSize: '12px',
+            fontWeight: 600,
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>{streamToast.mode === 'kaggle' ? '📊' : '🤖'}</span>
+            <span>{streamToast.text}</span>
+          </div>
+          <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8' }}>
+            Active Live Ingest
+          </span>
+        </div>
+      )}
 
       {/* 4 KPI Cards */}
       <section className="secops-kpi-row" aria-label="Key Risk Metrics">
