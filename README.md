@@ -26,9 +26,9 @@ It pairs deterministic business rules (geospatial travel velocity, sliding-windo
 
 ### ⚡ Sub-5ms Hybrid Evaluation Pipeline
 * **Deterministic Rule Policies**: Evaluates transaction velocity, geospatial speed, amount outliers, and device fingerprints in parallel.
-* **Dual-Engine ML Classification**: Adaptive primary **LightGBM** classifier with automated **RandomForest** fallback.
-* **Unsupervised Anomaly Scoring**: Embedded `IsolationForest` model to detect zero-day fraud patterns without historical labels.
-* **Transparent Explainability**: Local feature-level **SHAP TreeExplainer** attributions show analysts the exact mathematical justification for every risk score.
+* **LightGBM for Known Historical Patterns**: Supervised gradient boosted trees trained on labeled Kaggle credit card fraud data, learning complex interactions across MCC, amount ranges, and velocity spikes (with automated RandomForest fallback).
+* **Isolation Forest for Behavioral Anomalies**: Unsupervised model dedicated to behavioral transaction data, flagging out-of-distribution customer deviations and zero-day anomalies without requiring prior labels.
+* **Transparent SHAP Explainability**: Local feature-level **SHAP TreeExplainer** attributions show analysts the exact mathematical justification for every risk score.
 
 ### 🛡️ Extensible Rule Engine (Open-Closed Principle)
 * **Modular Plug-and-Play**: Register custom detection rules with a simple `@register_rule` decorator without altering core engine logic.
