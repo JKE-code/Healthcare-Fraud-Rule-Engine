@@ -5,49 +5,77 @@ import { mockAnalyzeTransaction } from '../data/mockTransactions';
 export function Payment({ onTransactionCreated, onNavigate }) {
   const scenarios = [
     {
-      id: 'safe',
-      amount: '450',
-      label: 'Amazon / Safe Baseline',
-      merchant: 'Amazon India',
+      id: 'velocity',
+      amount: '3500',
+      label: '⚡ Velocity Burst / Rapid Surge',
+      merchant: 'QuickPay Recharge',
       location: 'Mumbai',
       timing: '14:30',
       device: 'mobile',
       payment_method: 'UPI',
-      fingerprint: 'iOS 17 (Safari) • Verified Mobile'
+      customer_id: 'CUST-1001',
+      fingerprint: 'iOS 17 • High-Frequency Authorization Burst'
     },
     {
-      id: 'elevated',
-      amount: '8500',
-      label: 'Electronics / Elevated',
-      merchant: 'Croma Electronics',
+      id: 'amount',
+      amount: '125000',
+      label: '💰 Extreme Amount Spike Outlier',
+      merchant: 'Al-Safa Luxury Jewels',
       location: 'Delhi',
-      timing: '23:45',
+      timing: '02:45',
       device: 'desktop',
       payment_method: 'CARD',
-      fingerprint: 'Windows 11 (Edge) • Known Desktop'
+      customer_id: 'CUST-1001',
+      fingerprint: 'Windows 11 • 50x Baseline Multiplier Outlier'
     },
     {
-      id: 'critical',
-      amount: '95000',
-      label: 'Dubai Luxury / Critical',
-      merchant: 'Al-Safa Watches & Luxury',
-      location: 'Dubai',
-      timing: '03:15',
+      id: 'impossible_travel',
+      amount: '12500',
+      label: '✈️ Impossible Travel (London 10m later)',
+      merchant: 'Harrods London',
+      location: 'London',
+      timing: '14:40',
+      device: 'mobile',
+      payment_method: 'CARD',
+      customer_id: 'CUST-1001',
+      fingerprint: 'Android 14 • 7,200 km in 10 mins (43,000 km/h)'
+    },
+    {
+      id: 'new_device',
+      amount: '28000',
+      label: '📱 New Device on High Value',
+      merchant: 'Electronics Hub',
+      location: 'Bangalore',
+      timing: '19:15',
       device: 'new_device',
       payment_method: 'CARD',
-      fingerprint: 'MacOS (Chrome) • Unrecognized Device'
+      customer_id: 'CUST-1001',
+      fingerprint: 'Unknown Emulator Fingerprint • High Risk'
+    },
+    {
+      id: 'safe',
+      amount: '650',
+      label: '✓ Normal Legitimate Baseline',
+      merchant: 'Swiggy Food',
+      location: 'Mumbai',
+      timing: '13:00',
+      device: 'mobile',
+      payment_method: 'UPI',
+      customer_id: 'CUST-1001',
+      fingerprint: 'iOS 17 (Safari) • Known Habitual Baseline'
     }
   ];
 
-  const [selectedScenario, setSelectedScenario] = useState('critical');
+  const [selectedScenario, setSelectedScenario] = useState('amount');
   const [formData, setFormData] = useState({
-    amount: '95000',
-    merchant: 'Al-Safa Watches & Luxury',
-    location: 'Dubai',
-    timing: '03:15',
-    device: 'new_device',
+    amount: '125000',
+    merchant: 'Al-Safa Luxury Jewels',
+    location: 'Delhi',
+    timing: '02:45',
+    device: 'desktop',
     payment_method: 'CARD',
-    fingerprint: 'MacOS (Chrome) • Unrecognized Device'
+    customer_id: 'CUST-1001',
+    fingerprint: 'Windows 11 • 50x Baseline Multiplier Outlier'
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -94,6 +122,7 @@ export function Payment({ onTransactionCreated, onNavigate }) {
       timing: scenario.timing,
       device: scenario.device,
       payment_method: scenario.payment_method,
+      customer_id: scenario.customer_id || 'CUST-1001',
       fingerprint: scenario.fingerprint
     });
   };
@@ -117,6 +146,7 @@ export function Payment({ onTransactionCreated, onNavigate }) {
       location: formData.location.trim() || 'Mumbai',
       device: formData.device,
       payment_method: formData.payment_method,
+      customer_id: formData.customer_id || 'CUST-1001',
       timing: formData.timing,
       timestamp: txDate.toISOString()
     };

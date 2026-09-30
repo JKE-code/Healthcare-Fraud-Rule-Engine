@@ -6,43 +6,36 @@ import { FraudChart } from '../components/FraudChart';
 import { RiskChart } from '../components/RiskChart';
 import { ActivityChart } from '../components/ActivityChart';
 import { AlertToast } from '../components/AlertToast';
-import { WS_URL } from '../api';
-import { initialMockTransactions, generateMockTransaction } from '../data/mockTransactions';
+import { WS_URL, fetchTransactions } from '../api';
 
 export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setWsStatus }) {
-  const [transactions, setTransactions] = useState(sharedTransactions || initialMockTransactions);
-  // Default selected transaction to TX-1003/TX-1027 (so the docked panel is populated right on load like Image 1)
-  const [selectedTx, setSelectedTx] = useState(() => {
-    return (
-      (sharedTransactions && sharedTransactions[0]) ||
-      initialMockTransactions.find((t) => t.transaction_id === 'TX-1003') ||
-      initialMockTransactions[0]
-    );
-  });
+  const [transactions, setTransactions] = useState(sharedTransactions || []);
+  const [selectedTx, setSelectedTx] = useState(null);
   const [newTxId, setNewTxId] = useState(null);
-  const [activeAlert, setActiveAlert] = useState({
-    id: 'alert-initial',
-    transaction_id: 'TX-1033',
-    amount: 72000,
-    fraud_probability: 0.89,
-    merchant: 'Offshore Gaming',
-    location: 'Dubai',
-    risk_level: 'CRITICAL',
-    prediction: 'FRAUD',
-    explanation: ['Unusually high transaction amount', 'Anomalous foreign gateway']
-  });
-  const [isAutoSim, setIsAutoSim] = useState(true);
+  const [activeAlert, setActiveAlert] = useState(null);
 
+  // Load real transactions from SQLite backend on mount
   useEffect(() => {
-    if (sharedTransactions && sharedTransactions.length > 0) {
-      setTransactions(sharedTransactions);
-    }
-  }, [sharedTransactions]);
+    fetchTransactions({ limit: 100 })
+      .then((res) => {
+        if (res && res.transactions && res.transactions.length > 0) {
+          setTransactions(res.transactions);
+          if (!selectedTx) {
+            // Prefer selecting a flagged transaction by default
+            const firstFlagged = res.transactions.find((t) => t.is_flagged || t.review_status === 'FLAGGED');
+            setSelectedTx(firstFlagged || res.transactions[0]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial transaction fetch warning:', err);
+      });
+  }, []);
 
   const handleIncomingTx = useCallback(
     (newTx) => {
       setTransactions((prev) => {
-        const updated = [newTx, ...prev.filter((t) => t.transaction_id !== newTx.transaction_id)].slice(0, 100);
+        const updated = [newTx, ...prev.filter((t) => t.transaction_id !== newTx.transaction_id)].slice(0, 150);
         if (onNewTransaction) onNewTransaction(updated);
         return updated;
       });
@@ -50,8 +43,8 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       setNewTxId(newTx.transaction_id);
       setTimeout(() => setNewTxId(null), 2500);
 
-      // If High/Critical, trigger floating toast
-      if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH') {
+      // If High/Critical risk, trigger floating SecOps toast
+      if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH' || newTx.is_flagged) {
         setActiveAlert({
           ...newTx,
           id: `alert-${Date.now()}`
@@ -61,7 +54,14 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
     [onNewTransaction]
   );
 
-  // WebSocket connection
+  const handleUpdateTx = useCallback((updatedTx) => {
+    setTransactions((prev) =>
+      prev.map((t) => (t.transaction_id === updatedTx.transaction_id ? updatedTx : t))
+    );
+    setSelectedTx((prev) => (prev && prev.transaction_id === updatedTx.transaction_id ? updatedTx : prev));
+  }, []);
+
+  // WebSocket connection for real-time live events
   useEffect(() => {
     let ws = null;
     let reconnectTimeout = null;
@@ -71,7 +71,7 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
         ws = new WebSocket(WS_URL);
 
         ws.onopen = () => {
-          setWsStatus('live');
+          if (setWsStatus) setWsStatus('live');
         };
 
         ws.onmessage = (event) => {
@@ -79,6 +79,8 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
             const payload = JSON.parse(event.data);
             if (payload.event === 'transaction_created' && payload.data) {
               handleIncomingTx(payload.data);
+            } else if (payload.event === 'transaction_reviewed' && payload.data) {
+              handleUpdateTx(payload.data);
             }
           } catch (err) {
             console.error('Error parsing WebSocket message:', err);
@@ -86,15 +88,15 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
         };
 
         ws.onerror = () => {
-          setWsStatus('disconnected');
+          if (setWsStatus) setWsStatus('disconnected');
         };
 
         ws.onclose = () => {
-          setWsStatus('disconnected');
-          reconnectTimeout = setTimeout(connect, 6000);
+          if (setWsStatus) setWsStatus('disconnected');
+          reconnectTimeout = setTimeout(connect, 4000);
         };
       } catch (err) {
-        setWsStatus('disconnected');
+        if (setWsStatus) setWsStatus('disconnected');
       }
     }
 
@@ -104,30 +106,17 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       if (ws) ws.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, [handleIncomingTx, setWsStatus]);
+  }, [handleIncomingTx, handleUpdateTx, setWsStatus]);
 
-  // Auto-simulation ticker (every 4 seconds)
-  useEffect(() => {
-    if (!isAutoSim) return;
+  // Aggregate KPI numbers from real SQLite transaction list
+  const totalCount = transactions.length;
+  const flaggedCount = transactions.filter((t) => t.is_flagged || t.review_status === 'FLAGGED').length;
+  const highRiskCount = transactions.filter((t) => t.risk_level === 'HIGH' || t.risk_level === 'CRITICAL').length;
+  const reviewedCount = transactions.filter((t) => t.review_status === 'REVIEWED' || t.review_status === 'CLEARED').length;
 
-    const interval = setInterval(() => {
-      const mockTx = generateMockTransaction();
-      handleIncomingTx(mockTx);
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [isAutoSim, handleIncomingTx]);
-
-  const totalBase = 12552;
-  const fraudBase = 152;
-  const highRiskBase = 89;
-
-  const currentFraudCount = transactions.filter((t) => t.prediction === 'FRAUD').length;
-  const currentHighRiskCount = transactions.filter((t) => t.risk_level === 'HIGH' || t.risk_level === 'CRITICAL').length;
-
-  const dynamicTotal = totalBase + transactions.length;
-  const dynamicFraud = fraudBase + currentFraudCount;
-  const dynamicHighRisk = highRiskBase + currentHighRiskCount;
+  const avgRisk = totalCount > 0
+    ? (transactions.reduce((acc, t) => acc + (t.risk_score || 0), 0) / totalCount) * 100
+    : 0;
 
   return (
     <div className="secops-dashboard-wrapper">
@@ -135,27 +124,20 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       <div className="secops-header-banner">
         <div className="banner-left">
           <div className="banner-title-line">
-            <h1 className="banner-main-title">Fraud Detection & Transaction Risk Agent</h1>
+            <h1 className="banner-main-title">Acentra Fraud Rule Engine & Review Console</h1>
           </div>
           <div className="banner-subline">
-            <span className="banner-desc">Real-time telemetry, probabilistic scoring, and autonomous rule intervention</span>
+            <span className="banner-desc">
+              Extensible Rule Engine • SQLite Persistence • Reviewer Triage Queue • AWS SES/SNS Alerting
+            </span>
           </div>
         </div>
 
         <div className="banner-right">
           <div className="system-online-badge">
             <span className="online-emerald-dot" />
-            <span className="online-label">SYSTEM ONLINE</span>
+            <span className="online-label">RULE ENGINE ONLINE</span>
           </div>
-
-          <button
-            className={`btn-auto-simulation ${isAutoSim ? 'sim-on' : 'sim-off'}`}
-            onClick={() => setIsAutoSim((prev) => !prev)}
-            title="Toggle dummy transaction stream"
-          >
-            <span className="sim-toggle-bullet" />
-            AUTO-SIMULATION: <strong>{isAutoSim ? 'ON' : 'OFF'}</strong>
-          </button>
         </div>
       </div>
 
@@ -163,35 +145,35 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       <section className="secops-kpi-row" aria-label="Key Risk Metrics">
         <StatCard
           label="TOTAL TRANSACTIONS"
-          value={dynamicTotal.toLocaleString()}
-          badgeText="+12 today"
+          value={totalCount.toLocaleString()}
+          badgeText="Persisted in SQLite"
           badgeType="green"
           iconType="total"
           cardTheme="default"
         />
 
         <StatCard
-          label="FRAUD DETECTED"
-          value={dynamicFraud.toLocaleString()}
-          badgeText="+4 today"
+          label="FLAGGED FOR REVIEW"
+          value={flaggedCount.toLocaleString()}
+          badgeText="Pending Analyst Triage"
           badgeType="red"
           iconType="fraud"
           cardTheme="fraud"
         />
 
         <StatCard
-          label="HIGH RISK TRANSACTIONS"
-          value={dynamicHighRisk.toLocaleString()}
-          badgeText="+8 today"
+          label="HIGH RISK ALERTS"
+          value={highRiskCount.toLocaleString()}
+          badgeText="AWS SES/SNS Triggered"
           badgeType="amber"
           iconType="high-risk"
           cardTheme="high-risk"
         />
 
         <StatCard
-          label="AVG RISK SCORE"
-          value="18.4%"
-          badgeText="↓ 2.3% vs y'day"
+          label="TRIAGED / CLEARED"
+          value={reviewedCount.toLocaleString()}
+          badgeText="Audited by SecOps"
           badgeType="green"
           iconType="avg-risk"
           cardTheme="default"
@@ -214,12 +196,7 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
             tx={selectedTx}
             isDocked={true}
             onClose={() => {}}
-            onBlock={(tx) => {
-              alert(`[Intervention] Transaction ${tx.transaction_id} is quarantined and blocked across foreign payment gateways.`);
-            }}
-            onMarkSafe={(tx) => {
-              alert(`[Intervention] Transaction ${tx.transaction_id} cleared and added to safe verification baseline.`);
-            }}
+            onUpdateTx={handleUpdateTx}
           />
         </div>
       </section>
@@ -246,14 +223,14 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       {/* Compliance & Telemetry Footer */}
       <footer className="secops-footer-bar">
         <div className="footer-left">
-          <span>© 2025 FRAUDGUARD AUTONOMOUS RISK ENGINE.</span>
-          <span className="soc2-badge">SOC-2 Type II Certified</span>
+          <span>ACENTRA HIRING HACKATHON — FRAUD RULE ENGINE WITH REVIEW CONSOLE.</span>
+          <span className="soc2-badge">SQLite Persistent • AWS SES/SNS Notifier</span>
         </div>
 
         <div className="footer-right">
-          <span>Cluster ID: <code>secops-prod-us-east-1</code></span>
+          <span>Engine Status: <strong>Active (4 Rules)</strong></span>
           <span className="bullet-sep">|</span>
-          <span>API Latency: <strong>18ms</strong></span>
+          <span>Rule Latency: <strong>&lt; 5ms</strong></span>
         </div>
       </footer>
     </div>

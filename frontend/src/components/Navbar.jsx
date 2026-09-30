@@ -13,8 +13,8 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
             </svg>
           </div>
           <div className="brand-title-wrap">
-            <span className="brand-name">FraudGuard</span>
-            <span className="brand-subtext">SECOPS CONSOLE</span>
+            <span className="brand-name">Acentra</span>
+            <span className="brand-subtext">FRAUD RULE ENGINE</span>
           </div>
         </div>
 
@@ -25,7 +25,7 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
             className={`nav-link ${currentRoute === '/dashboard' ? 'active' : ''}`}
             onClick={() => onNavigate('/dashboard')}
           >
-            DASHBOARD
+            REVIEWER CONSOLE
           </button>
 
           <button
@@ -33,7 +33,7 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
             className={`nav-link ${currentRoute === '/pay' ? 'active' : ''}`}
             onClick={() => onNavigate('/pay')}
           >
-            MAKE PAYMENT
+            ATTACK SIMULATOR
           </button>
 
           <button
@@ -41,7 +41,7 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
             className={`nav-link ${currentRoute === '/rules' ? 'active' : ''}`}
             onClick={() => onNavigate('/rules')}
           >
-            POLICY RULES
+            RULE POLICIES
           </button>
 
           <button

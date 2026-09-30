@@ -7,10 +7,28 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
     maximumFractionDigits: 0
   }).format(tx.amount);
 
-  const fraudPercent = (tx.fraud_probability * 100).toFixed(1);
+  const fraudPercent = ((tx.risk_score || tx.fraud_probability || 0) * 100).toFixed(1);
   const isCritical = tx.risk_level === 'CRITICAL';
   const isHigh = tx.risk_level === 'HIGH';
   const isFraud = tx.prediction === 'FRAUD';
+
+  const reviewStatus = tx.review_status || (tx.is_flagged ? 'FLAGGED' : 'CLEARED');
+
+  const statusStyleMap = {
+    FLAGGED: { bg: 'rgba(239, 68, 68, 0.15)', text: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' },
+    REVIEWED: { bg: 'rgba(56, 189, 248, 0.15)', text: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' },
+    CLEARED: { bg: 'rgba(16, 185, 129, 0.15)', text: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' },
+    PENDING: { bg: 'rgba(245, 158, 11, 0.15)', text: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }
+  };
+
+  const statusStyle = statusStyleMap[reviewStatus] || statusStyleMap.PENDING;
+
+  // Format timestamp for clean display
+  let displayTime = tx.timestamp || '';
+  if (displayTime.includes('T')) {
+    const parts = displayTime.split('T');
+    displayTime = parts[1].slice(0, 8);
+  }
 
   return (
     <tr
@@ -25,7 +43,7 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
         </div>
       </td>
 
-      <td className="cell-time">{tx.timestamp}</td>
+      <td className="cell-time">{displayTime}</td>
 
       <td className="cell-amount">{formattedAmount}</td>
 
@@ -43,13 +61,27 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
 
       <td className="cell-risk">
         <span className={`risk-pill-chip ${isCritical ? 'chip-critical' : isHigh ? 'chip-high' : tx.risk_level === 'MEDIUM' ? 'chip-medium' : 'chip-low'}`}>
-          {tx.risk_level}
+          {tx.risk_level || 'LOW'}
         </span>
       </td>
 
       <td className="cell-prediction">
-        <span className={`pred-pill-chip ${isFraud ? 'chip-pred-fraud' : 'chip-pred-legit'}`}>
-          {isFraud ? 'FRAUD' : 'LEGITIMATE'}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '10px',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            backgroundColor: statusStyle.bg,
+            color: statusStyle.text,
+            border: statusStyle.border,
+          }}
+        >
+          {reviewStatus}
         </span>
       </td>
 

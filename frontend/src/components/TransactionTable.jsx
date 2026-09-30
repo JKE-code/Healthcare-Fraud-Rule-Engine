@@ -8,35 +8,49 @@ export function TransactionTable({
   onSelectTx
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [reviewFilter, setReviewFilter] = useState('ALL'); // ALL, FLAGGED, REVIEWED, CLEARED
   const [riskFilter, setRiskFilter] = useState('ALL');
+
+  const flaggedCount = transactions.filter(
+    (t) => t.review_status === 'FLAGGED' || t.is_flagged
+  ).length;
 
   const filtered = transactions.filter((tx) => {
     const matchesSearch =
       tx.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.merchant.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.location.toLowerCase().includes(searchTerm.toLowerCase());
+      (tx.location && tx.location.toLowerCase().includes(searchTerm.toLowerCase()));
 
     if (!matchesSearch) return false;
-    if (riskFilter === 'ALL') return true;
-    return tx.risk_level === riskFilter;
+
+    // Review Status Filter
+    const currentStatus = tx.review_status || (tx.is_flagged ? 'FLAGGED' : 'CLEARED');
+    if (reviewFilter === 'FLAGGED' && currentStatus !== 'FLAGGED') return false;
+    if (reviewFilter === 'REVIEWED' && currentStatus !== 'REVIEWED') return false;
+    if (reviewFilter === 'CLEARED' && currentStatus !== 'CLEARED') return false;
+
+    // Risk Level Filter
+    if (riskFilter !== 'ALL' && tx.risk_level !== riskFilter) return false;
+
+    return true;
   });
 
   return (
     <div className="secops-table-card">
       {/* Table Header Bar */}
-      <div className="table-top-toolbar">
+      <div className="table-top-toolbar" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="toolbar-left">
           <div className="title-with-beacon">
             <span className="live-emerald-beacon" />
-            <h2 className="toolbar-headline">Live Transaction Monitoring</h2>
+            <h2 className="toolbar-headline">Reviewer Monitoring Queue</h2>
           </div>
           <div className="receiving-chip">
             <span className="pulse-mini-dot" />
-            <span>Receiving transactions 142 tx/s</span>
+            <span>SQLite Persisted Stream</span>
           </div>
         </div>
 
-        <div className="toolbar-right">
+        <div className="toolbar-right" style={{ gap: '8px' }}>
           {/* Search Box */}
           <div className="table-search-wrap">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="search-icon">
@@ -46,7 +60,7 @@ export function TransactionTable({
             <input
               type="text"
               className="table-search-input"
-              placeholder="Filter ID, Merchant..."
+              placeholder="Search ID, Merchant, City..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -69,6 +83,101 @@ export function TransactionTable({
         </div>
       </div>
 
+      {/* Reviewer Queue Tab Filter Row */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          padding: '8px 16px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
+          background: 'rgba(15, 23, 42, 0.6)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setReviewFilter('ALL')}
+          style={{
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: reviewFilter === 'ALL' ? '1px solid #38bdf8' : '1px solid transparent',
+            background: reviewFilter === 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+            color: reviewFilter === 'ALL' ? '#38bdf8' : '#94a3b8',
+          }}
+        >
+          All ({transactions.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReviewFilter('FLAGGED')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: reviewFilter === 'FLAGGED' ? '1px solid #ef4444' : '1px solid transparent',
+            background: reviewFilter === 'FLAGGED' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+            color: reviewFilter === 'FLAGGED' ? '#f87171' : '#94a3b8',
+          }}
+        >
+          <span>Flagged Queue</span>
+          {flaggedCount > 0 && (
+            <span
+              style={{
+                backgroundColor: '#dc2626',
+                color: '#fff',
+                fontSize: '10px',
+                padding: '1px 6px',
+                borderRadius: '10px',
+              }}
+            >
+              {flaggedCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReviewFilter('REVIEWED')}
+          style={{
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: reviewFilter === 'REVIEWED' ? '1px solid #38bdf8' : '1px solid transparent',
+            background: reviewFilter === 'REVIEWED' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+            color: reviewFilter === 'REVIEWED' ? '#38bdf8' : '#94a3b8',
+          }}
+        >
+          Reviewed
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReviewFilter('CLEARED')}
+          style={{
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: reviewFilter === 'CLEARED' ? '1px solid #10b981' : '1px solid transparent',
+            background: reviewFilter === 'CLEARED' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+            color: reviewFilter === 'CLEARED' ? '#34d399' : '#94a3b8',
+          }}
+        >
+          Cleared
+        </button>
+      </div>
+
       {/* Table Content */}
       <div className="secops-table-scroller">
         <table className="secops-table">
@@ -78,9 +187,9 @@ export function TransactionTable({
               <th>TIME</th>
               <th>AMOUNT</th>
               <th>MERCHANT</th>
-              <th>FRAUD SCORE</th>
-              <th>RISK</th>
-              <th>PREDICTION</th>
+              <th>RISK SCORE</th>
+              <th>RISK LEVEL</th>
+              <th>REVIEW STATUS</th>
               <th>ACTION</th>
             </tr>
           </thead>
@@ -88,7 +197,7 @@ export function TransactionTable({
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan="8" className="empty-row-td">
-                  No matching sessions found
+                  No transactions found matching active filter.
                 </td>
               </tr>
             ) : (
@@ -104,20 +213,6 @@ export function TransactionTable({
             )}
           </tbody>
         </table>
-      </div>
-
-      {/* Table Footer with Pagination */}
-      <div className="table-footer-status-bar">
-        <div className="footer-status-left">
-          <span className="status-bullet-green">●</span>
-          <span>Showing 1 to {Math.min(filtered.length, 22)} of 12,492 streamed sessions</span>
-        </div>
-
-        <div className="footer-pagination-controls">
-          <button className="btn-page-step" disabled>Previous</button>
-          <span className="page-current-indicator">Page 1 of 2,892</span>
-          <button className="btn-page-step">Next</button>
-        </div>
       </div>
     </div>
   );

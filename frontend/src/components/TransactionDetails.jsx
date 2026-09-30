@@ -1,7 +1,16 @@
-import React from 'react';
-import { RiskBadge, PredictionBadge } from './RiskBadge';
+import React, { useState } from 'react';
+import { reviewTransaction } from '../api';
 
-export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked = false }) {
+export function TransactionDetails({
+  tx,
+  onClose,
+  onUpdateTx,
+  isDocked = false
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [analystNotes, setAnalystNotes] = useState('');
+  const [feedbackMsg, setFeedbackMsg] = useState(null);
+
   if (!tx) return null;
 
   const formattedAmount = new Intl.NumberFormat('en-IN', {
@@ -10,21 +19,50 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
     maximumFractionDigits: 0
   }).format(tx.amount);
 
-  const fraudPercent = (tx.fraud_probability * 100).toFixed(1);
-  const anomalyPercent = (tx.anomaly_score * 100).toFixed(1);
+  const riskPercent = (((tx.risk_score || tx.fraud_probability || 0)) * 100).toFixed(1);
   const isCritical = tx.risk_level === 'CRITICAL';
   const isHigh = tx.risk_level === 'HIGH';
+
+  const reviewStatus = tx.review_status || (tx.is_flagged ? 'FLAGGED' : 'CLEARED');
+
+  const statusColorMap = {
+    FLAGGED: { bg: 'rgba(239, 68, 68, 0.2)', text: '#fca5a5', border: '1px solid #ef4444' },
+    REVIEWED: { bg: 'rgba(56, 189, 248, 0.2)', text: '#7dd3fc', border: '1px solid #38bdf8' },
+    CLEARED: { bg: 'rgba(16, 185, 129, 0.2)', text: '#6ee7b7', border: '1px solid #10b981' },
+    PENDING: { bg: 'rgba(245, 158, 11, 0.2)', text: '#fde68a', border: '1px solid #f59e0b' }
+  };
+  const activeStatusColor = statusColorMap[reviewStatus] || statusColorMap.PENDING;
 
   // Segmented visual bar (10 segments)
   const segments = Array.from({ length: 10 }).map((_, i) => {
     const threshold = (i + 1) * 0.1;
-    const isActive = tx.fraud_probability >= threshold - 0.05;
+    const isActive = (tx.risk_score || tx.fraud_probability || 0) >= threshold - 0.05;
     let color = '#10b981'; // green
     if (i >= 4) color = '#f59e0b'; // yellow/amber
     if (i >= 7) color = '#ea580c'; // orange
     if (i >= 8) color = '#dc2626'; // red
     return { isActive, color };
   });
+
+  const handleReviewAction = async (action) => {
+    setIsSubmitting(true);
+    setFeedbackMsg(null);
+    try {
+      const updated = await reviewTransaction(
+        tx.transaction_id,
+        action,
+        'SecOps Analyst (Lead)',
+        analystNotes || `Marked as ${action} from Reviewer Console.`
+      );
+      if (onUpdateTx) onUpdateTx(updated);
+      setFeedbackMsg({ type: 'success', text: `Transaction successfully marked as ${action}!` });
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    } catch (err) {
+      setFeedbackMsg({ type: 'error', text: err.message || 'Failed to update review status.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const content = (
     <div className="docked-details-card">
@@ -37,16 +75,23 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
               <line x1="12" y1="16" x2="12" y2="12" />
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
-            <span>TRANSACTION DETAILS</span>
+            <span>REVIEW CONSOLE DOSSIER</span>
           </div>
-          <div className="details-tx-headline">
+          <div className="details-tx-headline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="details-tx-id">{tx.transaction_id}</span>
-            <span className={`details-tag-flag ${tx.prediction === 'FRAUD' ? 'tag-fraud' : 'tag-legit'}`}>
-              {tx.prediction || 'FRAUD'}
+            <span
+              style={{
+                padding: '3px 8px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 700,
+                backgroundColor: activeStatusColor.bg,
+                color: activeStatusColor.text,
+                border: activeStatusColor.border,
+              }}
+            >
+              {reviewStatus}
             </span>
-            {isCritical && (
-              <span className="details-tag-quarantine">QUARANTINED</span>
-            )}
           </div>
         </div>
 
@@ -61,12 +106,38 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
       </div>
 
       <div className="details-card-body">
+        {/* AWS SES/SNS Alert Banner if triggered */}
+        {tx.aws_alert_sent && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              marginBottom: '12px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#fca5a5',
+              fontSize: '11px',
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>🚨</span>
+            <div>
+              <strong>AWS SES & SNS Alert Dispatched:</strong> High-risk security threshold crossed.
+              <div style={{ fontSize: '10px', color: '#cbd5e1' }}>
+                Ref ID: <code>{tx.aws_message_id || 'AWS-DELIVERY-OK'}</code>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Top Flagged Amount Hero Box */}
         <div className="flagged-amount-box">
           <div className="amount-headline-row">
             <div className="amount-label-wrap">
-              <span className="flagged-label">FLAGGED AMOUNT</span>
-              <span className="flagged-sub">Pre-authorization rule active</span>
+              <span className="flagged-label">AUTHORIZATION AMOUNT</span>
+              <span className="flagged-sub">Evaluated by Extensible Rule Engine</span>
             </div>
             <span className="flagged-hero-amount">{formattedAmount}</span>
           </div>
@@ -74,9 +145,9 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
           <div className="prob-meter-section">
             <div className="prob-text-row">
               <span className="prob-label">
-                <span className="square-dot" /> Fraud Probability
+                <span className="square-dot" /> Composite Risk Score
               </span>
-              <span className="prob-badge">{fraudPercent}%</span>
+              <span className="prob-badge">{riskPercent}%</span>
             </div>
 
             {/* Segmented Gradient Bar */}
@@ -91,108 +162,58 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
             </div>
 
             <div className="score-sub-row">
-              <span className="sub-stat">Anomaly Score: <strong>{anomalyPercent}%</strong></span>
-              <span className="sub-stat">Risk Level: <strong className={isCritical ? 'text-critical' : ''}>{tx.risk_level}</strong></span>
+              <span className="sub-stat">Decision: <strong>{tx.decision || 'REVIEW'}</strong></span>
+              <span className="sub-stat">Risk Level: <strong className={isCritical ? 'text-critical' : ''}>{tx.risk_level || 'LOW'}</strong></span>
             </div>
           </div>
         </div>
 
         {/* Context Key-Values */}
-        <div className="context-spec-table">
-          <div className="context-spec-row">
-            <span className="spec-key">Merchant</span>
-            <span className="spec-val font-semibold">{tx.merchant}</span>
+        <div className="context-kv-section">
+          <div className="kv-row">
+            <span className="kv-key">Customer ID:</span>
+            <span className="kv-val">{tx.customer_id || 'CUST-1001'}</span>
           </div>
-
-          <div className="context-spec-row">
-            <span className="spec-key">Geographic Origin</span>
-            <span className="spec-val location-pin-val">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-              {tx.location}
-            </span>
+          <div className="kv-row">
+            <span className="kv-key">Merchant:</span>
+            <span className="kv-val">{tx.merchant}</span>
           </div>
-
-          <div className="context-spec-row">
-            <span className="spec-key">Device Identity</span>
-            <span className="spec-val">
-              {tx.device === 'new_device' ? (
-                <span className="device-mismatch-badge">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69" />
-                  </svg>
-                  Fingerprint Mismatch
-                </span>
-              ) : (
-                <span className="device-normal-badge">Verified Device ({tx.device})</span>
-              )}
-            </span>
+          <div className="kv-row">
+            <span className="kv-key">Location:</span>
+            <span className="kv-val">{tx.location}</span>
           </div>
-
-          <div className="context-spec-row">
-            <span className="spec-key">Payment Instrument</span>
-            <span className="spec-val card-token-val">
-              {tx.payment_method}
-            </span>
+          <div className="kv-row">
+            <span className="kv-key">Payment Method:</span>
+            <span className="kv-val">{tx.payment_method} ({tx.channel || 'UPI'})</span>
+          </div>
+          <div className="kv-row">
+            <span className="kv-key">Device:</span>
+            <span className="kv-val">{tx.device}</span>
           </div>
         </div>
 
-        {/* Customer Historical Pattern vs Current Transaction Analysis */}
-        <div style={{
-          marginTop: '14px',
-          padding: '12px',
-          borderRadius: '8px',
-          background: 'rgba(15, 23, 42, 0.6)',
-          border: '1px solid rgba(51, 65, 85, 0.8)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5">
-              <path d="M12 20v-6M6 20V10M18 20V4" />
-            </svg>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', color: '#94a3b8' }}>
-              CUSTOMER BEHAVIORAL PROFILE COMPARISON
-            </span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px' }}>
-            <div style={{ padding: '8px', borderRadius: '6px', background: 'rgba(30, 41, 59, 0.5)' }}>
-              <span style={{ color: '#64748b', display: 'block', marginBottom: '2px' }}>Normal Baseline</span>
-              <strong style={{ color: '#10b981' }}>₹450 - ₹4,500</strong>
-              <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '2px' }}>Domestic • Trusted Mobile</div>
+        {/* Reviewer Audit Info if already reviewed */}
+        {tx.reviewed_by && (
+          <div
+            style={{
+              padding: '8px 12px',
+              borderRadius: '6px',
+              background: 'rgba(30, 41, 59, 0.8)',
+              border: '1px solid #334155',
+              fontSize: '11px',
+              color: '#94a3b8',
+              margin: '8px 0',
+            }}
+          >
+            <div style={{ color: '#38bdf8', fontWeight: 700, marginBottom: '2px' }}>
+              Reviewed by: {tx.reviewed_by}
             </div>
-
-            <div style={{ padding: '8px', borderRadius: '6px', background: 'rgba(30, 41, 59, 0.5)' }}>
-              <span style={{ color: '#64748b', display: 'block', marginBottom: '2px' }}>Current Attempt</span>
-              <strong style={{ color: tx.amount > 10000 ? '#ef4444' : '#38bdf8' }}>
-                ₹{tx.amount?.toLocaleString()}
-              </strong>
-              <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '2px' }}>
-                {tx.location} • {tx.device}
-              </div>
-            </div>
+            {tx.reviewed_at && <div>Time: {new Date(tx.reviewed_at).toLocaleTimeString()}</div>}
+            {tx.reviewer_notes && <div style={{ marginTop: '4px', color: '#f1f5f9' }}>Notes: "{tx.reviewer_notes}"</div>}
           </div>
+        )}
 
-          {/* Anomaly verdict comparison tag */}
-          <div style={{
-            marginTop: '8px',
-            padding: '6px 8px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            background: tx.risk_level === 'CRITICAL' || tx.risk_level === 'HIGH' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-            color: tx.risk_level === 'CRITICAL' || tx.risk_level === 'HIGH' ? '#fca5a5' : '#86efac',
-            border: `1px solid ${tx.risk_level === 'CRITICAL' || tx.risk_level === 'HIGH' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`
-          }}>
-            {tx.risk_level === 'CRITICAL' || tx.risk_level === 'HIGH' ? (
-              <span>⚠️ <strong>Anomaly Detected:</strong> Transaction diverges from the customer's typical spending baseline, device fingerprint, or geographic perimeter.</span>
-            ) : (
-              <span>✓ <strong>Within Baseline:</strong> Matches the customer's usual transaction velocity and authenticated device signature.</span>
-            )}
-          </div>
-        </div>
-
-        {/* Why was this flagged? (Explainability Box) */}
+        {/* Triggered Fraud Rules Breakdown Card */}
         <div className="flagged-reasons-card">
           <div className="reasons-header">
             <div className="reasons-title">
@@ -201,16 +222,32 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              WHY WAS THIS FLAGGED?
+              TRIGGERED RULE ENGINE HEURISTICS
             </div>
-            <span className="confidence-pill">HIGH CONFIDENCE</span>
+            <span className="confidence-pill">
+              {tx.flags && tx.flags.length > 0 ? `${tx.flags.length} RULES FIRED` : 'CLEARED'}
+            </span>
           </div>
 
           <ul className="reasons-bullet-list">
-            {(!tx.explanation || tx.explanation.length === 0) ? (
+            {(!tx.flags || tx.flags.length === 0) && (!tx.explanation || tx.explanation.length === 0) ? (
               <li className="reason-bullet safe-bullet">
-                ✓ No anomalous indicators found. Fits established baseline.
+                ✓ No fraud rules triggered. Within normal velocity and amount baseline.
               </li>
+            ) : tx.flags && tx.flags.length > 0 ? (
+              tx.flags.map((flag, idx) => (
+                <li key={idx} className="reason-bullet" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="red-dot-bullet">•</span>
+                    <strong style={{ color: flag.severity === 'CRITICAL' ? '#f87171' : '#fde047' }}>
+                      [{flag.rule_code}] {flag.rule_name}
+                    </strong>
+                  </div>
+                  <div style={{ paddingLeft: '14px', fontSize: '11px', color: '#cbd5e1' }}>
+                    {flag.reason}
+                  </div>
+                </li>
+              ))
             ) : (
               tx.explanation.map((item, idx) => (
                 <li key={idx} className="reason-bullet">
@@ -222,24 +259,62 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
           </ul>
         </div>
 
-        {/* Recommended Actions */}
-        <div className="details-actions-bar" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <button className="btn-block-tx" onClick={() => onBlock && onBlock(tx)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-            </svg>
-            Block TX
-          </button>
-          <button className="btn-safe-tx" onClick={() => onMarkSafe && onMarkSafe(tx)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            Mark as Safe
-          </button>
+        {/* Reviewer Action Form */}
+        <div style={{ marginTop: '12px' }}>
+          <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+            Reviewer Notes / Justification:
+          </label>
+          <input
+            type="text"
+            className="table-search-input"
+            style={{ width: '100%', marginBottom: '8px', fontSize: '12px' }}
+            placeholder="e.g., Verified cardholder via 2FA step-up..."
+            value={analystNotes}
+            onChange={(e) => setAnalystNotes(e.target.value)}
+          />
+
+          {feedbackMsg && (
+            <div
+              style={{
+                fontSize: '11px',
+                padding: '6px 8px',
+                borderRadius: '4px',
+                marginBottom: '8px',
+                background: feedbackMsg.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                color: feedbackMsg.type === 'success' ? '#34d399' : '#f87171',
+                border: feedbackMsg.type === 'success' ? '1px solid #10b981' : '1px solid #ef4444',
+              }}
+            >
+              {feedbackMsg.text}
+            </div>
+          )}
+
+          <div className="details-actions-bar" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <button
+              className="btn-block-tx"
+              style={{ background: '#3b82f6', borderColor: '#2563eb' }}
+              disabled={isSubmitting}
+              onClick={() => handleReviewAction('REVIEWED')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              Mark as Reviewed
+            </button>
+            <button
+              className="btn-safe-tx"
+              disabled={isSubmitting}
+              onClick={() => handleReviewAction('CLEARED')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Mark as Cleared
+            </button>
+          </div>
         </div>
 
-        {/* Unique Feature: 1-Click Export Forensic Dossier */}
+        {/* 1-Click Export Forensic Dossier */}
         <button
           type="button"
           onClick={() => {
@@ -251,16 +326,20 @@ export function TransactionDetails({ tx, onClose, onBlock, onMarkSafe, isDocked 
                 merchant: tx.merchant,
                 location: tx.location,
                 device: tx.device,
-                instrument: tx.payment_method
+                customer_id: tx.customer_id
               },
-              ml_verdict: {
-                prediction: tx.prediction,
+              rule_engine_verdict: {
+                review_status: tx.review_status,
+                risk_score: tx.risk_score,
                 risk_level: tx.risk_level,
-                fraud_probability: `${(tx.fraud_probability * 100).toFixed(1)}%`,
-                anomaly_score: `${(tx.anomaly_score * 100).toFixed(1)}%`,
-                explainability: tx.explanation || []
+                triggered_flags: tx.flags || [],
+                explanations: tx.explanation || []
               },
-              compliance_standard: "RBI / NPCI Cyber-Fraud Intercept Mandate v4.2"
+              aws_notification: {
+                alert_dispatched: tx.aws_alert_sent,
+                message_id: tx.aws_message_id
+              },
+              compliance_standard: "Acentra Hiring Hackathon - Fraud Rule Engine Mandate v1.0"
             };
             const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);

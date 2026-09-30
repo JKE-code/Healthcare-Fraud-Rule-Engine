@@ -1,38 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchRules } from '../api';
 
 const INITIAL_RULES = [
   {
-    id: 'RULE-GEO-04',
-    name: 'Cross-Border Location Dissonance',
-    category: 'Geolocation & IP',
-    description: 'Intercepts transactions originating from foreign IPs when cardholder SIM or primary device was active domestically within the last 15 minutes.',
-    condition: "location != 'home_country' && velocity_delta_minutes < 15 && amount > 5000",
-    action: 'AUTONOMOUS BLOCK',
-    actionType: 'block',
+    id: 'RULE_VELOCITY',
+    name: 'Transaction Velocity Surge (Sliding Window)',
+    category: 'Velocity & Volume',
+    description: 'Intercepts anomalous transaction bursts exceeding 3 authorization requests within a 60-second rolling sliding window.',
+    condition: 'count(transactions, window=60s) >= 3',
+    action: 'AUTONOMOUS BLOCK / STEP-UP',
+    actionType: 'challenge',
     enabled: true,
-    triggeredToday: 38,
-    falsePositiveRate: '0.4%',
+    triggeredToday: 42,
+    falsePositiveRate: '0.3%',
     confidence: '99.4%'
   },
   {
-    id: 'RULE-VEL-01',
-    name: 'High-Frequency Velocity Surge',
+    id: 'RULE_UNUSUAL_AMOUNT',
+    name: 'Unusual Transaction Amount Outlier',
     category: 'Velocity & Volume',
-    description: 'Flags anomalous transaction bursts exceeding 3 card authorization requests within a 30-second sliding window across online merchants.',
-    condition: 'transaction_count_30s >= 3 && is_online_gateway == true',
-    action: 'QUARANTINE & STEP-UP OTP',
-    actionType: 'challenge',
-    enabled: true,
-    triggeredToday: 84,
-    falsePositiveRate: '1.2%',
-    confidence: '96.8%'
-  },
-  {
-    id: 'RULE-AMT-09',
-    name: 'Extreme Baseline Outlier (+400%)',
-    category: 'Velocity & Volume',
-    description: 'Detects single transactions exceeding 4x the cardholder 90-day moving average authorization volume.',
-    condition: 'amount > (cardholder_90d_avg * 4.0) && amount >= 50000',
+    description: 'Detects single transactions exceeding hard limits (₹50,000) or > 3.5x historical customer average spending baseline.',
+    condition: 'amount >= 50000 || amount > (baseline_avg * 3.5)',
     action: 'AUTONOMOUS BLOCK',
     actionType: 'block',
     enabled: true,
@@ -41,43 +29,30 @@ const INITIAL_RULES = [
     confidence: '99.8%'
   },
   {
-    id: 'RULE-DEV-08',
-    name: 'Zero-Trust Device Fingerprint Mismatch',
-    category: 'Device & Identity',
-    description: 'Triggers when a transaction originates from an unrecognized hardware hash with zero prior authentication history on high-risk merchant categories.',
-    condition: "device == 'new_device' && merchant_risk_tier >= 'HIGH'",
-    action: 'MANUAL REVIEW',
-    actionType: 'review',
-    enabled: true,
-    triggeredToday: 52,
-    falsePositiveRate: '2.1%',
-    confidence: '94.5%'
-  },
-  {
-    id: 'RULE-ML-99',
-    name: 'Ensemble Neural Anomaly Threshold (≥85%)',
-    category: 'Machine Learning',
-    description: 'Composite risk score fusion: XGBoost classification probability (≥85%) combined with Isolation Forest outlier anomaly score (≥80%).',
-    condition: 'xgb_fraud_prob >= 0.85 && isoforest_score >= 0.80',
+    id: 'RULE_IMPOSSIBLE_LOCATION',
+    name: 'Impossible Geographical Location & Travel Speed',
+    category: 'Geolocation & IP',
+    description: 'Calculates Haversine physical distance and elapsed travel time between sequential transactions. Flags required velocity > 850 km/h.',
+    condition: 'distance_km > 50 && speed_kmh > 850',
     action: 'AUTONOMOUS BLOCK',
     actionType: 'block',
     enabled: true,
-    triggeredToday: 27,
+    triggeredToday: 14,
     falsePositiveRate: '0.1%',
     confidence: '99.9%'
   },
   {
-    id: 'RULE-MERCH-02',
-    name: 'Offshore Crypto & Virtual Asset Intercept',
-    category: 'Merchant & Gateway',
-    description: 'Shadow monitoring of peer-to-peer cryptocurrency on-ramp transactions initiated during non-habitual nocturnal hours.',
-    condition: "merchant_mcc in ['6051', '6211'] && hour_of_day in [1,2,3,4,5]",
-    action: 'SHADOW MONITOR',
-    actionType: 'shadow',
-    enabled: false,
-    triggeredToday: 11,
-    falsePositiveRate: '4.8%',
-    confidence: '88.2%'
+    id: 'RULE_NEW_DEVICE',
+    name: 'Unrecognized Hardware Device on High Value',
+    category: 'Device & Identity',
+    description: 'Extensible Rule demonstration: Intercepts high-value charges (> ₹15,000) originating from an unverified or new device fingerprint.',
+    condition: "device == 'new_device' && amount > 15000",
+    action: 'MANUAL REVIEW',
+    actionType: 'review',
+    enabled: true,
+    triggeredToday: 26,
+    falsePositiveRate: '1.4%',
+    confidence: '95.2%'
   }
 ];
 
