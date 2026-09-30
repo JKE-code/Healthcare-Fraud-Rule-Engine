@@ -1,55 +1,35 @@
 import uuid
-import time
+import json
+import logging
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
-from backend.models import TransactionRequest, TransactionResponse, TransactionListResponse
-from backend.store import add_transaction, get_transaction, get_all_transactions, get_total_count
+from backend.db.session import get_db
+from backend.db.models import TransactionDB, FraudFlagDB, ReviewAuditLogDB
+from backend.models import (
+    TransactionRequest,
+    TransactionResponse,
+    TransactionListResponse,
+    ReviewStatusUpdateRequest,
+    RuleInfoResponse,
+)
+from backend.rules import engine
+from backend.services.aws_notifier import notifier
 from backend.websocket import manager
 
-import importlib
+logger = logging.getLogger(__name__)
 
-# Dynamic ML predictor resolver (checks ml_engine.predictor first, falls back to mock_predict)
-# Now transparently reports which mode is active.
+# Optional ML module loader (retains ML/SHAP as an analytical enrichment without making it core)
 _ml_module = None
-_ml_available = False
-
 try:
+    import importlib
     _ml_module = importlib.import_module("ml_engine.predictor")
-    if hasattr(_ml_module, "predict_transaction"):
-        _ml_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     pass
-
-
-def predict_transaction(tx_payload: Dict[str, Any]) -> Dict[str, Any]:
-    if _ml_available:
-        return _ml_module.predict_transaction(tx_payload)
-    from backend.mock_data import mock_predict
-    result = mock_predict(tx_payload)
-    result["model_status"] = "mock"
-    result["inference_latency_ms"] = None
-    result["shap_values"] = {}
-    result["shap_available"] = False
-    result["agent_action"] = {"action": "APPROVE", "customer_message": None, "analyst_case_note": None}
-    return result
-
-
-def get_model_status() -> str:
-    """Get current model status for health checks."""
-    if _ml_available and hasattr(_ml_module, "get_model_status"):
-        return _ml_module.get_model_status()
-    return "mock"
-
-
-def get_latency_benchmark() -> dict:
-    """Get stored latency benchmark from training."""
-    if _ml_available and hasattr(_ml_module, "get_latency_benchmark"):
-        return _ml_module.get_latency_benchmark()
-    return None
-
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -58,14 +38,13 @@ def generate_transaction_id() -> str:
     return f"TX-{uuid.uuid4().hex[:8].upper()}"
 
 
-from backend.customer_profiles import evaluate_customer_behaviour
-
-def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
+@router.post("", response_model=TransactionResponse)
+async def create_transaction(request: TransactionRequest, db: Session = Depends(get_db)):
     tx_id = generate_transaction_id()
-    now_iso = request_data.get("timestamp") or datetime.now(timezone.utc).isoformat()
-    timing_val = request_data.get("timing") or ""
-    cust_id = request_data.get("customer_id", "CUST-1001")
-    channel = request_data.get("channel", "UPI")
+    now_iso = request.timestamp or datetime.now(timezone.utc).isoformat()
+    timing_val = request.timing or ""
+    cust_id = request.customer_id or "CUST-1001"
+    channel = request.channel or "UPI"
 
     tx_payload = {
         "transaction_id": tx_id,
@@ -73,115 +52,219 @@ def process_transaction(request_data: Dict[str, Any]) -> Dict[str, Any]:
         "timing": timing_val,
         "customer_id": cust_id,
         "channel": channel,
-        "amount": request_data["amount"],
-        "merchant": request_data["merchant"],
-        "location": request_data["location"],
-        "device": request_data["device"],
-        "payment_method": request_data["payment_method"],
+        "amount": request.amount,
+        "merchant": request.merchant,
+        "location": request.location,
+        "device": request.device,
+        "payment_method": request.payment_method,
     }
 
-    # Evaluate customer behavioural baseline deviation
-    behaviour_eval = evaluate_customer_behaviour(tx_payload)
+    # 1. Fetch recent customer transaction history from SQLite database
+    recent_db_txs = (
+        db.query(TransactionDB)
+        .filter(TransactionDB.customer_id == cust_id)
+        .order_by(desc(TransactionDB.timestamp))
+        .limit(20)
+        .all()
+    )
+    history = [t.to_dict() for t in recent_db_txs]
 
-    # Call ML predictor interface (either real or mock)
-    ml_result = predict_transaction(tx_payload)
+    # 2. Evaluate through the Extensible Rule Engine
+    eval_result = engine.evaluate_all(tx_payload, history)
 
-    fraud_prob = float(ml_result.get("fraud_probability", 0.0))
-    anomaly = float(ml_result.get("anomaly_score", 0.0))
-    base_risk = float(ml_result.get("risk_score", 0.0))
+    # 3. Optional ML enrichment (auxiliary score & SHAP attribution)
+    ml_fraud_prob = 0.0
+    ml_anomaly = 0.0
+    shap_vals = {}
+    if _ml_module and hasattr(_ml_module, "predict_transaction"):
+        try:
+            ml_out = _ml_module.predict_transaction(tx_payload)
+            ml_fraud_prob = float(ml_out.get("fraud_probability", 0.0))
+            ml_anomaly = float(ml_out.get("anomaly_score", 0.0))
+            shap_vals = ml_out.get("shap_values", {})
+        except Exception as e:
+            logger.debug(f"Optional ML enrichment skipped: {e}")
 
-    # Integrate behavioural deviation into composite risk
-    dev_score = behaviour_eval["deviation_score"]
-    if dev_score > 0:
-        # Boost risk when customer deviates strongly from historical baseline
-        composite_risk = min(1.0, (base_risk * 0.70) + (dev_score * 0.30))
-        anomaly = max(anomaly, dev_score)
-    else:
-        # If transaction matches customer's normal baseline (e.g. Priya normal high volume), reduce false positives
-        composite_risk = base_risk * 0.40
+    # Determine Reviewer Workflow Status
+    # Flagged if rule engine flagged it or risk level is HIGH/CRITICAL
+    is_flagged = eval_result.is_flagged or eval_result.risk_level in ("HIGH", "CRITICAL")
+    review_status = "FLAGGED" if is_flagged else "CLEARED"
 
-    composite_risk = round(composite_risk, 3)
+    # 4. Automated AWS SES/SNS Alerting when high-risk threshold is crossed
+    aws_sent = False
+    aws_msg_id = None
+    if notifier.should_alert(eval_result.composite_risk_score, eval_result.risk_level):
+        try:
+            alert_receipt = notifier.dispatch_alert(
+                {**tx_payload, "risk_score": eval_result.composite_risk_score, "risk_level": eval_result.risk_level},
+                [{"rule_code": f.rule_code, "reason": f.reason} for f in eval_result.triggered_rules],
+            )
+            aws_sent = alert_receipt.get("delivered", False)
+            aws_msg_id = alert_receipt.get("message_id")
+        except Exception as e:
+            logger.error(f"Failed to dispatch AWS notification: {e}")
 
-    # Determine risk level
-    if composite_risk >= 0.80:
-        risk_level = "CRITICAL"
-        decision = "BLOCK"
-    elif composite_risk >= 0.60:
-        risk_level = "HIGH"
-        decision = "BLOCK" if composite_risk >= 0.70 else "REVIEW"
-    elif composite_risk >= 0.30:
-        risk_level = "MEDIUM"
-        decision = "REVIEW"
-    else:
-        risk_level = "LOW"
-        decision = "APPROVE"
+    # 5. Persist Transaction to SQLite Database
+    db_tx = TransactionDB(
+        transaction_id=tx_id,
+        timestamp=now_iso,
+        customer_id=cust_id,
+        amount=request.amount,
+        merchant=request.merchant,
+        location=request.location,
+        device=request.device,
+        payment_method=request.payment_method,
+        channel=channel,
+        timing=timing_val,
+        risk_score=eval_result.composite_risk_score,
+        risk_level=eval_result.risk_level,
+        is_flagged=is_flagged,
+        decision=eval_result.decision,
+        prediction=eval_result.prediction,
+        fraud_probability=ml_fraud_prob,
+        anomaly_score=ml_anomaly,
+        review_status=review_status,
+        aws_alert_sent=aws_sent,
+        aws_message_id=aws_msg_id,
+        explanation_json=json.dumps(eval_result.explanations),
+        shap_json=json.dumps(shap_vals),
+    )
+    db.add(db_tx)
 
-    prediction = "FRAUD" if decision == "BLOCK" else "LEGITIMATE"
-    is_suspicious = decision in ("BLOCK", "REVIEW")
+    # Persist Fraud Flags
+    for rule_res in eval_result.triggered_rules:
+        db_flag = FraudFlagDB(
+            transaction_id=tx_id,
+            rule_code=rule_res.rule_code,
+            rule_name=rule_res.rule_name,
+            severity=rule_res.severity,
+            reason=rule_res.reason or "",
+            metrics_json=json.dumps(rule_res.metrics),
+        )
+        db.add(db_flag)
 
-    # Merge explanations from ML and customer behaviour
-    ml_explanations = list(ml_result.get("explanation", []))
-    combined_explanations = list(dict.fromkeys(ml_explanations + behaviour_eval["explanations"]))
+    db.commit()
+    db.refresh(db_tx)
 
-    # Combine transaction data + ML results
-    combined: Dict[str, Any] = {
-        "transaction_id": tx_id,
-        "timestamp": now_iso,
-        "timing": timing_val,
-        "customer_id": cust_id,
-        "channel": channel,
-        "amount": request_data["amount"],
-        "merchant": request_data["merchant"],
-        "location": request_data["location"],
-        "device": request_data["device"],
-        "payment_method": request_data["payment_method"],
-        "fraud_probability": round(fraud_prob, 3),
-        "anomaly_score": round(anomaly, 3),
-        "risk_score": composite_risk,
-        "risk_level": risk_level,
-        "is_suspicious": is_suspicious,
-        "prediction": prediction,
-        "decision": decision,
-        "explanation": combined_explanations,
-        # New fields from origin/main
-        "shap_values": ml_result.get("shap_values", {}),
-        "shap_available": ml_result.get("shap_available", False),
-        "model_status": ml_result.get("model_status", "mock"),
-        "inference_latency_ms": ml_result.get("inference_latency_ms", None),
-        "agent_action": ml_result.get("agent_action", None),
-    }
+    result_dict = db_tx.to_dict()
 
-    # In-memory storage
-    add_transaction(tx_id, combined)
+    # 6. Broadcast event over WebSocket
+    try:
+        await manager.broadcast({
+            "event": "transaction_created",
+            "data": result_dict,
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast failed: {e}")
 
-    return combined
-
-
-@router.post("", response_model=TransactionResponse)
-async def create_transaction(request: TransactionRequest):
-    result = process_transaction(request.model_dump())
-
-    # Broadcast to WebSocket clients
-    await manager.broadcast({
-        "event": "transaction_created",
-        "data": result,
-    })
-
-    return result
+    return result_dict
 
 
 @router.get("", response_model=TransactionListResponse)
-async def list_transactions():
-    tx_list = get_all_transactions()
+async def list_transactions(
+    flagged: Optional[bool] = Query(None, description="Filter for flagged transactions"),
+    status: Optional[str] = Query(None, description="Filter by review_status: FLAGGED, REVIEWED, CLEARED"),
+    customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    query = db.query(TransactionDB)
+
+    if flagged is not None:
+        query = query.filter(TransactionDB.is_flagged == flagged)
+    if status:
+        query = query.filter(TransactionDB.review_status == status.upper())
+    if customer_id:
+        query = query.filter(TransactionDB.customer_id == customer_id)
+
+    total = query.count()
+    txs = query.order_by(desc(TransactionDB.timestamp)).limit(limit).all()
+
     return {
-        "transactions": tx_list,
-        "total": get_total_count(),
+        "transactions": [t.to_dict() for t in txs],
+        "total": total,
+    }
+
+
+@router.get("/flagged", response_model=TransactionListResponse)
+async def list_flagged_transactions(
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Dedicated endpoint for the Reviewer Console Triage Queue."""
+    query = db.query(TransactionDB).filter(TransactionDB.review_status == "FLAGGED")
+    total = query.count()
+    txs = query.order_by(desc(TransactionDB.timestamp)).limit(limit).all()
+
+    return {
+        "transactions": [t.to_dict() for t in txs],
+        "total": total,
     }
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
-async def retrieve_transaction(transaction_id: str):
-    tx = get_transaction(transaction_id)
+async def retrieve_transaction(transaction_id: str, db: Session = Depends(get_db)):
+    tx = db.query(TransactionDB).filter(TransactionDB.transaction_id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return tx
+    return tx.to_dict()
+
+
+@router.patch("/{transaction_id}/review", response_model=TransactionResponse)
+async def review_transaction(
+    transaction_id: str,
+    payload: ReviewStatusUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Reviewer Console Action:
+    Allows fraud analysts to triage and mark transactions as REVIEWED or CLEARED.
+    Persists decision in database and logs audit entry.
+    """
+    tx = db.query(TransactionDB).filter(TransactionDB.transaction_id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    action = payload.action.upper()
+    if action not in ("REVIEWED", "CLEARED"):
+        raise HTTPException(status_code=400, detail="Invalid action. Must be 'REVIEWED' or 'CLEARED'.")
+
+    prev_status = tx.review_status
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    tx.review_status = action
+    tx.reviewed_by = payload.reviewer or "Fraud Analyst"
+    tx.reviewed_at = now_iso
+    tx.reviewer_notes = payload.notes
+
+    if action == "CLEARED":
+        tx.decision = "APPROVE"
+        tx.prediction = "LEGITIMATE"
+        tx.is_flagged = False
+
+    # Create audit log record
+    audit_log = ReviewAuditLogDB(
+        transaction_id=transaction_id,
+        action=f"MARKED_{action}",
+        previous_status=prev_status,
+        new_status=action,
+        reviewer=tx.reviewed_by,
+        timestamp=now_iso,
+        notes=payload.notes,
+    )
+    db.add(audit_log)
+    db.commit()
+    db.refresh(tx)
+
+    result_dict = tx.to_dict()
+
+    # Broadcast update event to all reviewer consoles via WebSocket
+    try:
+        await manager.broadcast({
+            "event": "transaction_reviewed",
+            "data": result_dict,
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast failed: {e}")
+
+    return result_dict

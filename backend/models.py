@@ -14,16 +14,30 @@ class TransactionRequest(BaseModel):
     timestamp: Optional[str] = Field(None, description="Optional ISO timestamp")
 
 
-class AgentAction(BaseModel):
-    action: str = Field(..., description="APPROVE, CHALLENGE_OTP, or BLOCK")
-    customer_message: Optional[str] = Field(None, description="Customer-facing message")
-    analyst_case_note: Optional[str] = Field(None, description="Analyst case note for BLOCK actions")
+class FraudFlagResponse(BaseModel):
+    id: Optional[int] = None
+    rule_code: str
+    rule_name: str
+    severity: str  # WARNING, CRITICAL
+    reason: str
+    metrics: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class ReviewAuditLogResponse(BaseModel):
+    id: Optional[int] = None
+    action: str
+    previous_status: str
+    new_status: str
+    reviewer: str
+    timestamp: str
+    notes: Optional[str] = None
 
 
 class TransactionResponse(BaseModel):
     transaction_id: str
     timestamp: str
     amount: float
+    currency: Optional[str] = "INR"
     merchant: str
     location: str
     device: str
@@ -31,20 +45,35 @@ class TransactionResponse(BaseModel):
     customer_id: Optional[str] = "CUST-1001"
     channel: Optional[str] = "UPI"
     timing: Optional[str] = None
-    fraud_probability: float
-    anomaly_score: float
+
+    # Risk & Evaluation
     risk_score: float
-    risk_level: str
-    is_suspicious: bool
-    prediction: str
+    risk_level: str  # LOW, MEDIUM, HIGH, CRITICAL
+    is_flagged: bool = False
+    is_suspicious: bool = False
     decision: Optional[str] = "APPROVE"  # APPROVE, REVIEW, BLOCK
-    explanation: List[str]
-    # New fields from review feedback
-    shap_values: Optional[Dict[str, float]] = Field(default=None, description="SHAP feature contributions")
-    shap_available: Optional[bool] = Field(default=False, description="Whether SHAP explanations are available")
-    model_status: Optional[str] = Field(default="mock", description="'live' or 'mock' — is the ML model loaded?")
-    inference_latency_ms: Optional[float] = Field(default=None, description="Server-side inference latency in ms")
-    agent_action: Optional[AgentAction] = Field(default=None, description="Agentic intervention details")
+    prediction: str = "LEGITIMATE"  # LEGITIMATE, FRAUD
+    fraud_probability: Optional[float] = 0.0
+    anomaly_score: Optional[float] = 0.0
+
+    # Reviewer Console Status
+    review_status: str = "PENDING"  # PENDING, FLAGGED, REVIEWED, CLEARED
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    reviewer_notes: Optional[str] = None
+
+    # AWS Alerting
+    aws_alert_sent: bool = False
+    aws_message_id: Optional[str] = None
+
+    # Explanations & Flags
+    explanation: List[str] = Field(default_factory=list)
+    flags: List[FraudFlagResponse] = Field(default_factory=list)
+
+    # Optional ML/SHAP compatibility fields
+    shap_values: Optional[Dict[str, float]] = Field(default=None)
+    shap_available: Optional[bool] = False
+    model_status: Optional[str] = "rule_engine"
 
 
 class TransactionListResponse(BaseModel):
@@ -52,26 +81,26 @@ class TransactionListResponse(BaseModel):
     total: int
 
 
-class HealthResponse(BaseModel):
-    status: str
-    service: str
-    model_status: Optional[str] = Field(default=None, description="'live' or 'mock'")
-    latency_benchmark: Optional[Dict[str, Any]] = Field(default=None, description="p50/p95/p99 latency stats")
+class ReviewStatusUpdateRequest(BaseModel):
+    action: str = Field(..., description="Action to perform: 'REVIEWED' or 'CLEARED'")
+    reviewer: Optional[str] = Field("Fraud Analyst", description="Name/ID of the reviewing analyst")
+    notes: Optional[str] = Field(None, description="Triage or clearance notes")
+
+
+class RuleInfoResponse(BaseModel):
+    rule_code: str
+    rule_name: str
+    description: str
+    weight: float
+    enabled: bool
 
 
 class DashboardStatsResponse(BaseModel):
     total_transactions: int
-    fraud_detected: int
+    flagged_transactions: int
+    reviewed_transactions: int
+    cleared_transactions: int
     high_risk_transactions: int
     avg_risk_score: float
-    risk_distribution: dict
-    prediction_distribution: dict
-
-
-class BenchmarkResponse(BaseModel):
-    model_status: str
-    mean_ms: float
-    p50_ms: float
-    p95_ms: float
-    p99_ms: float
-    n_requests: int
+    risk_distribution: Dict[str, int]
+    review_distribution: Dict[str, int]
