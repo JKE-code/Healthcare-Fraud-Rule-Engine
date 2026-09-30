@@ -39,7 +39,16 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
         <div className="tx-id-badge-wrap">
           <span className={`tx-signal-dot ${isCritical || isHigh ? 'dot-crimson' : 'dot-emerald'}`} />
           <span className="tx-id-code">{tx.transaction_id}</span>
-          {(isCritical || isHigh) && <span className="scp-badge">SCP</span>}
+          {tx.aws_alert_sent && (
+            <span
+              className="scp-badge"
+              style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)' }}
+              title="AWS SES/SNS High-Risk Alert Dispatched"
+            >
+              AWS 🚨
+            </span>
+          )}
+          {(isCritical || isHigh) && !tx.aws_alert_sent && <span className="scp-badge">SCP</span>}
         </div>
       </td>
 
@@ -48,9 +57,37 @@ export function TransactionRow({ tx, isNew, onClick, isSelected }) {
       <td className="cell-amount">{formattedAmount}</td>
 
       <td className="cell-merchant">
-        <span className="merchant-truncated" title={`${tx.merchant} (${tx.location})`}>
-          {tx.merchant}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <span className="merchant-truncated" title={`${tx.merchant} (${tx.location || 'Unknown'})`}>
+            {tx.merchant}
+          </span>
+          {tx.flags && tx.flags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+              {tx.flags.map((flag, idx) => {
+                const shortCode = flag.rule_code ? flag.rule_code.replace('RULE_', '') : 'RULE';
+                const isCrit = flag.severity === 'CRITICAL';
+                return (
+                  <span
+                    key={idx}
+                    style={{
+                      fontSize: '9px',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      fontWeight: 700,
+                      backgroundColor: isCrit ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                      color: isCrit ? '#fca5a5' : '#fde047',
+                      border: `1px solid ${isCrit ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
+                      letterSpacing: '0.02em',
+                    }}
+                    title={flag.reason || flag.rule_name}
+                  >
+                    {shortCode}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </td>
 
       <td className="cell-fraudscore">

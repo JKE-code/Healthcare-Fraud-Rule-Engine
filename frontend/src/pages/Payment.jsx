@@ -82,36 +82,79 @@ export function Payment({ onTransactionCreated, onNavigate }) {
   const [verdict, setVerdict] = useState({
     status: 'BLOCKED',
     decision: 'REJECT 403',
-    fraudLikelihood: 94.5,
-    threatCategory: 'CRITICAL Threat Category',
-    modelId: 'Ensemble ML (RF + IsoForest)',
+    fraudLikelihood: 95.0,
+    threatCategory: 'CRITICAL Risk Category',
+    modelId: 'Extensible Rule Engine + ML',
     latency: '—',
     serverLatency: null,
     refId: 'TX-INITIAL',
     timestamp: 'JUST NOW',
-    modelStatus: null,
+    modelStatus: 'live',
     shapValues: {},
     shapAvailable: false,
     agentAction: null,
+    flags: [
+      {
+        rule_code: 'RULE_UNUSUAL_AMOUNT',
+        rule_name: 'Unusual Transaction Amount',
+        severity: 'CRITICAL',
+        reason: 'Extreme Amount Spike: ₹125,000 is 50.0x higher than baseline (₹2,500).',
+        metrics: { amount: 125000, baseline: 2500, multiplier: 50 }
+      }
+    ],
+    awsAlertSent: true,
+    awsMessageId: 'AWS-SES-SANDBOX-DEMO',
+    reviewStatus: 'FLAGGED',
+    riskScore: 0.95,
+    riskLevel: 'CRITICAL',
     riskFactors: [
       {
-        title: 'High Amount Outlier',
-        detail: 'Transaction amount (Rs.95,000) is extremely high compared to normal history.'
+        title: 'Unusual Amount Outlier',
+        detail: 'Authorization amount ₹125,000 crosses statistical anomaly cap.'
       },
       {
         title: 'Unrecognized Device Signature',
-        detail: 'Transaction originated from a new or unrecognized device.'
-      },
-      {
-        title: 'Foreign / Anomalous Location',
-        detail: 'Transaction location (Dubai) differs from regular geographic baseline.'
-      },
-      {
-        title: 'Unusual Transaction Timing',
-        detail: 'Initiated during high-risk late-night hours (03:15 AM).'
+        detail: 'Transaction originated from an unverified desktop fingerprint.'
       }
     ]
   });
+
+  const applyVerdictFromResponse = (data, roundTripMs = '15.0') => {
+    const isBlocked = data.risk_level === 'CRITICAL' || data.risk_level === 'HIGH' || data.is_flagged;
+    const fraudPct = (((data.risk_score != null ? data.risk_score : data.fraud_probability) || 0) * 100).toFixed(1);
+    const serverLat = data.inference_latency_ms;
+    const displayLatency = serverLat != null ? `${serverLat}ms` : `${roundTripMs}ms (round-trip)`;
+
+    const explanations = (data.explanation && data.explanation.length > 0)
+      ? data.explanation.map((item, idx) => ({
+          title: data.shap_available ? `SHAP Factor #${idx + 1}` : `Factor #${idx + 1}`,
+          detail: item
+        }))
+      : [];
+
+    setVerdict({
+      status: isBlocked ? 'BLOCKED' : 'APPROVED',
+      decision: isBlocked ? (data.risk_level === 'CRITICAL' ? 'REJECT 403' : 'CHALLENGE 302') : 'PASS 200',
+      fraudLikelihood: fraudPct,
+      threatCategory: `${data.risk_level || 'LOW'} Risk Category`,
+      modelId: 'Extensible Rule Engine + ML',
+      latency: displayLatency,
+      serverLatency: serverLat,
+      refId: data.transaction_id,
+      timestamp: 'JUST NOW',
+      modelStatus: data.model_status || 'live',
+      shapValues: data.shap_values || {},
+      shapAvailable: data.shap_available || false,
+      agentAction: data.agent_action || null,
+      riskFactors: explanations,
+      flags: data.flags || [],
+      awsAlertSent: data.aws_alert_sent || false,
+      awsMessageId: data.aws_message_id || null,
+      reviewStatus: data.review_status || (isBlocked ? 'FLAGGED' : 'CLEARED'),
+      riskScore: data.risk_score != null ? data.risk_score : data.fraud_probability,
+      riskLevel: data.risk_level || 'LOW'
+    });
+  };
 
   const handleScenarioSelect = (scenario) => {
     setSelectedScenario(scenario.id);
@@ -161,68 +204,96 @@ export function Payment({ onTransactionCreated, onNavigate }) {
       });
       
       const roundTripMs = (performance.now() - startTime).toFixed(1);
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Convert backend ML explanation list to riskFactors format
-      const explanations = (data.explanation && data.explanation.length > 0)
-        ? data.explanation.map((item, idx) => ({
-            title: data.shap_available ? `SHAP Factor #${idx + 1}` : `Factor #${idx + 1}`,
-            detail: item
-          }))
-        : [];
-
-      const isBlocked = data.risk_level === 'CRITICAL' || data.risk_level === 'HIGH';
-      const fraudPct = ((data.fraud_probability || 0) * 100).toFixed(1);
-      // Use server-side inference latency if available, else round-trip
-      const serverLat = data.inference_latency_ms;
-      const displayLatency = serverLat != null ? `${serverLat}ms` : `${roundTripMs}ms (round-trip)`;
-
-      setVerdict({
-        status: isBlocked ? 'BLOCKED' : 'APPROVED',
-        decision: isBlocked ? (data.risk_level === 'CRITICAL' ? 'REJECT 403' : 'CHALLENGE 302') : 'PASS 200',
-        fraudLikelihood: fraudPct,
-        threatCategory: `${data.risk_level} Risk Category`,
-        modelId: 'Ensemble ML (RF + IsoForest)',
-        latency: displayLatency,
-        serverLatency: serverLat,
-        refId: data.transaction_id,
-        timestamp: 'JUST NOW',
-        modelStatus: data.model_status || 'mock',
-        shapValues: data.shap_values || {},
-        shapAvailable: data.shap_available || false,
-        agentAction: data.agent_action || null,
-        riskFactors: explanations
-      });
-
+      applyVerdictFromResponse(data, roundTripMs);
       if (onTransactionCreated) onTransactionCreated(data);
     } catch (err) {
       // Offline fallback
       const mockResult = mockAnalyzeTransaction(payload);
-      const isBlocked = mockResult.risk_level === 'CRITICAL' || mockResult.risk_level === 'HIGH';
-      
-      setVerdict({
-        status: isBlocked ? 'BLOCKED' : 'APPROVED',
-        decision: isBlocked ? 'REJECT 403' : 'PASS 200',
-        fraudLikelihood: ((mockResult.fraud_probability || 0) * 100).toFixed(1),
-        threatCategory: `${mockResult.risk_level} Risk Category`,
-        modelId: 'ML Risk Engine (Offline)',
-        latency: '— (offline)',
-        serverLatency: null,
-        refId: mockResult.transaction_id,
-        timestamp: 'JUST NOW',
-        modelStatus: 'offline',
-        shapValues: {},
-        shapAvailable: false,
-        agentAction: null,
-        riskFactors: (mockResult.explanation || []).map((exp, i) => ({
-          title: `Triggered Signal #${i + 1}`,
-          detail: exp
-        }))
+      applyVerdictFromResponse(mockResult, '10.0');
+      if (onTransactionCreated) onTransactionCreated(mockResult);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 1-Click Velocity Burst: Injects 3 rapid sequential transactions
+  const handleExecuteVelocityBurst = async () => {
+    setIsProcessing(true);
+    try {
+      const now = new Date();
+      for (let i = 1; i <= 3; i++) {
+        const payload = {
+          amount: 3500 + i * 200,
+          merchant: `QuickPay Burst #${i}`,
+          location: 'Mumbai',
+          device: 'mobile',
+          payment_method: 'UPI',
+          customer_id: 'CUST-1001',
+          timestamp: new Date(now.getTime() + i * 300).toISOString()
+        };
+        const res = await fetch(`${API_URL}/api/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (i === 3) {
+          applyVerdictFromResponse(data);
+        }
+        if (onTransactionCreated) onTransactionCreated(data);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } catch (err) {
+      console.error('Velocity burst execution error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 1-Click Impossible Travel: Injects Mumbai then London 5 mins later
+  const handleExecuteImpossibleFlight = async () => {
+    setIsProcessing(true);
+    try {
+      const now = new Date();
+      // Tx 1: Mumbai at T - 5 mins
+      const payload1 = {
+        amount: 1200,
+        merchant: 'CCD Bandra',
+        location: 'Mumbai',
+        device: 'mobile',
+        payment_method: 'UPI',
+        customer_id: 'CUST-1001',
+        timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString()
+      };
+      await fetch(`${API_URL}/api/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload1)
       });
 
-      if (onTransactionCreated) onTransactionCreated(mockResult);
+      // Tx 2: London right now (7,200 km in 5 mins -> speed > 85,000 km/h)
+      const payload2 = {
+        amount: 14500,
+        merchant: 'Harrods London Knightsbridge',
+        location: 'London',
+        device: 'mobile',
+        payment_method: 'CARD',
+        customer_id: 'CUST-1001',
+        timestamp: now.toISOString()
+      };
+      const res2 = await fetch(`${API_URL}/api/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload2)
+      });
+      const data2 = await res2.json();
+      applyVerdictFromResponse(data2);
+      if (onTransactionCreated) onTransactionCreated(data2);
+    } catch (err) {
+      console.error('Impossible flight execution error:', err);
     } finally {
       setIsProcessing(false);
     }
@@ -274,6 +345,56 @@ export function Payment({ onTransactionCreated, onNavigate }) {
                     <span className="sc-label">{sc.label}</span>
                   </button>
                 ))}
+              </div>
+
+              {/* 1-Click Multi-Transaction Attack Scenario Demonstrators */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={handleExecuteVelocityBurst}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#f87171',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="Sends 3 rapid authorizations for CUST-1001 to trigger RULE_VELOCITY in sliding 60s window"
+                >
+                  <span>⚡ 3x Velocity Burst</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={handleExecuteImpossibleFlight}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="Sends Mumbai then London 5m later (7,200km at 86,400km/h) to trigger RULE_IMPOSSIBLE_LOCATION"
+                >
+                  <span>✈️ Mumbai ➔ London</span>
+                </button>
               </div>
             </div>
 
@@ -697,6 +818,97 @@ export function Payment({ onTransactionCreated, onNavigate }) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* AWS SES/SNS Alert Dispatch Receipt Banner */}
+          {verdict.awsAlertSent && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                margin: '12px 0',
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#fca5a5',
+                fontSize: '12px',
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>🚨</span>
+              <div>
+                <strong>AWS SES & SNS Alert Dispatched:</strong> High-risk security threshold crossed.
+                <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
+                  Delivery Reference: <code>{verdict.awsMessageId || 'AWS-DELIVERY-OK'}</code> • Sandbox/SES Dispatched
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Triggered Rule Engine Heuristics Section */}
+          <div style={{
+            margin: '12px 0',
+            padding: '14px',
+            borderRadius: '8px',
+            background: 'rgba(15, 23, 42, 0.7)',
+            border: '1px solid rgba(56, 189, 248, 0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.05em', color: '#38bdf8' }}>
+                TRIGGERED RULE ENGINE HEURISTICS
+              </span>
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                fontWeight: 700,
+                backgroundColor: verdict.flags && verdict.flags.length > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                color: verdict.flags && verdict.flags.length > 0 ? '#f87171' : '#34d399',
+                border: `1px solid ${verdict.flags && verdict.flags.length > 0 ? '#ef4444' : '#10b981'}`
+              }}>
+                {verdict.flags && verdict.flags.length > 0 ? `${verdict.flags.length} RULES FIRED` : '0 RULES FIRED (SAFE)'}
+              </span>
+            </div>
+
+            {(!verdict.flags || verdict.flags.length === 0) ? (
+              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                ✓ No deterministic rule violations. Authorization passed velocity, baseline amount, and geographic checks.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {verdict.flags.map((flag, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(30, 41, 59, 0.6)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                      <strong style={{ fontSize: '11px', color: flag.severity === 'CRITICAL' ? '#f87171' : '#fde047' }}>
+                        [{flag.rule_code}] {flag.rule_name}
+                      </strong>
+                      <span style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '1px 6px',
+                        borderRadius: '3px',
+                        backgroundColor: flag.severity === 'CRITICAL' ? '#dc2626' : '#d97706',
+                        color: '#fff'
+                      }}>
+                        {flag.severity}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
+                      {flag.reason}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* SHAP FEATURE ATTRIBUTION */}
