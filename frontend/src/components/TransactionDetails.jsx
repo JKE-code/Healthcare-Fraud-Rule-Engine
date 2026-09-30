@@ -274,6 +274,26 @@ export function TransactionDetails({
                   <div style={{ paddingLeft: '14px', fontSize: '11px', color: '#cbd5e1' }}>
                     {flag.reason}
                   </div>
+                  {flag.metrics && Object.keys(flag.metrics).length > 0 && (
+                    <div style={{ paddingLeft: '14px', display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                      {Object.entries(flag.metrics).map(([k, v]) => (
+                        <span
+                          key={k}
+                          style={{
+                            fontSize: '10px',
+                            padding: '1px 6px',
+                            borderRadius: '3px',
+                            background: 'rgba(15, 23, 42, 0.8)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            color: '#94a3b8',
+                            fontFamily: 'monospace'
+                          }}
+                        >
+                          {k}: <strong style={{ color: '#e2e8f0' }}>{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(1)) : String(v)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))
             ) : (

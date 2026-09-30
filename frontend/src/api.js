@@ -1,5 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws";
+const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+export const API_URL = import.meta.env.VITE_API_URL || `http://${host}:8000`;
+export const WS_URL = import.meta.env.VITE_WS_URL || `ws://${host}:8000/ws`;
 
 export async function fetchTransactions(filter = {}) {
   const params = new URLSearchParams();
@@ -111,4 +112,18 @@ export async function fetchTransactionDossier(transactionId) {
   return res.json();
 }
 
-export { API_URL, WS_URL };
+export async function resetSimulatorData() {
+  const res = await fetch(`${API_URL}/api/simulator/reset`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to reset simulator database");
+  return res.json();
+}
+
+export async function toggleSimulator() {
+  const res = await fetch(`${API_URL}/api/simulator/toggle`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to toggle simulator stream");
+  return res.json();
+}

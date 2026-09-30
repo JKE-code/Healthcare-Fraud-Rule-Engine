@@ -6,10 +6,10 @@ import { FraudChart } from '../components/FraudChart';
 import { RiskChart } from '../components/RiskChart';
 import { ActivityChart } from '../components/ActivityChart';
 import { AlertToast } from '../components/AlertToast';
-import { WS_URL, fetchTransactions } from '../api';
+import { WS_URL, fetchTransactions, resetSimulatorData } from '../api';
 
-export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setWsStatus }) {
-  const [transactions, setTransactions] = useState(sharedTransactions || []);
+export function Dashboard({ wsStatus, setWsStatus }) {
+  const [transactions, setTransactions] = useState([]);
   const [selectedTx, setSelectedTx] = useState(null);
   const [newTxId, setNewTxId] = useState(null);
   const [activeAlert, setActiveAlert] = useState(null);
@@ -32,27 +32,26 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
       });
   }, []);
 
-  const handleIncomingTx = useCallback(
-    (newTx) => {
-      setTransactions((prev) => {
-        const updated = [newTx, ...prev.filter((t) => t.transaction_id !== newTx.transaction_id)].slice(0, 150);
-        if (onNewTransaction) onNewTransaction(updated);
-        return updated;
-      });
-
-      setNewTxId(newTx.transaction_id);
-      setTimeout(() => setNewTxId(null), 2500);
-
-      // If High/Critical risk, trigger floating SecOps toast
-      if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH' || newTx.is_flagged) {
-        setActiveAlert({
-          ...newTx,
-          id: `alert-${Date.now()}`
-        });
+  const handleIncomingTx = useCallback((newTx) => {
+    setTransactions((prev) => {
+      const exists = prev.some((t) => t.transaction_id === newTx.transaction_id);
+      if (exists) {
+        return prev.map((t) => (t.transaction_id === newTx.transaction_id ? newTx : t));
       }
-    },
-    [onNewTransaction]
-  );
+      return [newTx, ...prev].slice(0, 150);
+    });
+
+    setNewTxId(newTx.transaction_id);
+    setTimeout(() => setNewTxId(null), 2500);
+
+    // If High/Critical risk, trigger floating SecOps toast
+    if (newTx.risk_level === 'CRITICAL' || newTx.risk_level === 'HIGH' || newTx.is_flagged) {
+      setActiveAlert({
+        ...newTx,
+        id: `alert-${Date.now()}`
+      });
+    }
+  }, []);
 
   const handleUpdateTx = useCallback((updatedTx) => {
     setTransactions((prev) =>
@@ -108,6 +107,34 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
     };
   }, [handleIncomingTx, handleUpdateTx, setWsStatus]);
 
+  // Periodic SQLite sync: Keeps queue synchronized even if browser was inactive or backgrounded
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      fetchTransactions({ limit: 100 })
+        .then((res) => {
+          if (res && res.transactions && res.transactions.length > 0) {
+            setTransactions((prev) => {
+              const map = new Map();
+              // Retain in-memory items first
+              prev.forEach((t) => map.set(t.transaction_id, t));
+              // Merge newly fetched transactions
+              res.transactions.forEach((t) => {
+                if (!map.has(t.transaction_id)) {
+                  map.set(t.transaction_id, t);
+                }
+              });
+              return Array.from(map.values())
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .slice(0, 150);
+            });
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(syncInterval);
+  }, []);
+
   // Aggregate KPI numbers from real SQLite transaction list
   const totalCount = transactions.length;
   const flaggedCount = transactions.filter((t) => t.is_flagged || t.review_status === 'FLAGGED').length;
@@ -133,7 +160,42 @@ export function Dashboard({ sharedTransactions, onNewTransaction, wsStatus, setW
           </div>
         </div>
 
-        <div className="banner-right">
+        <div className="banner-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await resetSimulatorData();
+                const res = await fetchTransactions({ limit: 100 });
+                if (res && res.transactions) {
+                  setTransactions(res.transactions);
+                  const firstFlagged = res.transactions.find((t) => t.is_flagged || t.review_status === 'FLAGGED');
+                  setSelectedTx(firstFlagged || res.transactions[0]);
+                }
+              } catch (err) {
+                console.error('Reset error:', err);
+              }
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 700,
+              background: 'rgba(56, 189, 248, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+            }}
+            title="Reset database to realistic baseline (Normal Swiggy/Amazon cleared in green, only genuine attacks flagged)"
+          >
+            <span>🔄</span>
+            <span>Reset Demo Baseline</span>
+          </button>
+
           <div className="system-online-badge">
             <span className="online-emerald-dot" />
             <span className="online-label">RULE ENGINE ONLINE</span>

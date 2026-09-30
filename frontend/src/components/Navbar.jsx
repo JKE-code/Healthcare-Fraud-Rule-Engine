@@ -58,27 +58,25 @@ export function Navbar({ currentRoute, onNavigate, wsStatus, modelStatus }) {
           <div className="system-live-pill">
             <span className="live-dot-pulse">
               <span className="dot-ping" />
-              <span className="dot-core" style={
-                modelStatus === 'live' ? {} :
-                modelStatus === 'mock' ? { background: '#f59e0b' } :
-                { background: '#ef4444' }
-              } />
+              <span className="dot-core" style={{ background: '#10b981' }} />
             </span>
-            <span className="live-pill-text">
-              {modelStatus === 'live' ? 'LIVE' : modelStatus === 'mock' ? 'MOCK' : 'OFFLINE'}
-            </span>
+            <span className="live-pill-text">ONLINE</span>
             <span className="live-pill-divider" />
             <span className="live-pill-status">
-              {modelStatus === 'live' ? 'Model: Live ML' :
-               modelStatus === 'mock' ? 'Model: Mock Mode' : 'Model: Offline'}
+              Rule Engine: 4 Active Rules
             </span>
           </div>
 
-          <div className="user-avatar-btn" title="SecOps Admin (nishanth@fraudguard)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div
+            className="user-avatar-btn"
+            title="Lead Reviewer: Vikas (SecOps Operations)"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', width: 'auto' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8' }}>Vikas (Reviewer)</span>
           </div>
         </div>
       </div>
